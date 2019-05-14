@@ -9,6 +9,8 @@ Revision:
         RBM class's main functions has been developed.
 """
 
+import numpy as np
+
 from keras import backend as K
 from keras.layers import Layer, Input
 from tensorflow.keras import initializers
@@ -26,14 +28,15 @@ class RBM(Layer):
                                  , shape=(input_shape[1], self.output_dim)
                                  , initializer='uniform' # Which initializer is optimal?
                                  , trainable=True)
-        super(RBM, self).build(input_shape)
 
-        self.hidden_bias = K.variable(initializers.get('uniform')((self.output_dim, ))
-                            , dtype=K.floatx()
-                            , name='rbm_hidden_bias')
-        self.visible_bias = K.variable(initializers.get('uniform')((input_shape[1], ))
-                            , dtype=K.floatx()
-                            , name='rbm_visible_bias')
+        self.hidden_bias = self.add_weight(name='rbm_hidden_bias'
+                                           , shape=(self.output_dim, )
+                                           , initializer='uniform'
+                                           , trainable=True)
+        self.visible_bias = self.add_weight(name='rbm_visible_bias'
+                                           , shape=(input_shape[1], )
+                                           , initializer='uniform'
+                                           , trainable=True)
         
         # Make symbolic computation objects.
         # Transform visible units.
@@ -45,6 +48,8 @@ class RBM(Layer):
         self.input_hidden = K.placeholder(shape=(None, self.output_dim), name='input_hidden')
         self.inv_transform = K.sigmoid(K.dot(self.input_hidden, K.transpose(self.rbm_weight)) + self.visible_bias)
         self.inv_transform_func = K.function([self.input_hidden], [self.inv_transform])
+        
+        super(RBM, self).build(input_shape)
         
     def call(self, x):
         return K.sigmoid(K.dot(x, self.rbm_weight) + self.hidden_bias) # Float type?
@@ -74,16 +79,16 @@ class RBM(Layer):
         # Contrastive divergence.
         v_pos = self.input_visible
         h_pos = self.transform
-        v_neg = K.less(K.random_uniform(shape=(self.hps['batch_size'], V.shape[1]))
-                       , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) + self.visible_bias))
-        h_neg = K.sigmoid(K.dot(v_neg, self.rbm_weight) + self.visible_bias)
-        update = K.transpose(K.dot(K.transpose(v_pos), h_pos)) - K.dot(K.transpose(h_neg), v_neg)
+        v_neg = K.cast(K.less(K.random_uniform(shape=(self.hps['batch_size'], V.shape[1]))
+                       , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) + self.visible_bias)), dtype=np.float32)
+        h_neg = K.sigmoid(K.dot(v_neg, self.rbm_weight) + self.hidden_bias)
+        update = K.transpose(K.transpose(K.dot(K.transpose(v_pos), h_pos)) - K.dot(K.transpose(h_neg), v_neg))
         self.rbm_weight_update_func = K.function([self.input_visible], 
                                 [K.update_add(self.rbm_weight, self.hps['lr'] * update)])
         self.hidden_bias_update_func = K.function([self.input_visible], 
-                                [K.update_add(self.hidden_bias, self.hps['lr'] * (K.sum(h_pos) - K.sum(h_neg)))])
+                                [K.update_add(self.hidden_bias, self.hps['lr'] * (K.sum(h_pos, axis=0) - K.sum(h_neg, axis=0)))])
         self.visible_bias_update_func = K.function([self.input_visible], 
-                                [K.update_add(self.visible_bias, self.hps['lr'] * (K.sum(v_pos) - K.sum(v_neg)))])
+                                [K.update_add(self.visible_bias, self.hps['lr'] * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
         
         for k in range(self.hps['epochs']):
             if verbose == 1:
@@ -94,25 +99,25 @@ class RBM(Layer):
                     # Contrastive divergence.
                     v_pos = self.input_visible
                     h_pos = self.transform
-                    v_neg = K.less(K.random_uniform(shape=(V.shape[0] - int(i*self.hps['batch_size']), V.shape[1])) #?
-                                   , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) + self.visible_bias))
-                    h_neg = K.sigmoid(K.dot(v_neg, self.rbm_weight) + self.visible_bias)
-                    update = K.transpose(K.dot(K.transpose(v_pos), h_pos)) - K.dot(K.transpose(h_neg), v_neg)
+                    v_neg = K.cast(K.less(K.random_uniform(shape=(V.shape[0] - int(i*self.hps['batch_size']), V.shape[1])) #?
+                                   , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) + self.visible_bias)), dtype=np.float32)
+                    h_neg = K.sigmoid(K.dot(v_neg, self.rbm_weight) + self.hidden_bias)
+                    update = K.transpose(K.transpose(K.dot(K.transpose(v_pos), h_pos)) - K.dot(K.transpose(h_neg), v_neg))
                     self.rbm_weight_update_func = K.function([self.input_visible], 
                                             [K.update_add(self.rbm_weight, self.hps['lr'] * update)])
                     self.hidden_bias_update_func = K.function([self.input_visible], 
-                                            [K.update_add(self.hidden_bias, self.hps['lr'] * (K.sum(h_pos) - K.sum(h_neg)))])
+                                            [K.update_add(self.hidden_bias, self.hps['lr'] * (K.sum(h_pos, axis=0) - K.sum(h_neg, axis=0)))])
                     self.visible_bias_update_func = K.function([self.input_visible], 
-                                            [K.update_add(self.visible_bias, self.hps['lr'] * (K.sum(v_pos) - K.sum(v_neg)))])
+                                            [K.update_add(self.visible_bias, self.hps['lr'] * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
 
-                    V_batch = V[int(i*self.hps['batch_size']):V.shape[0]]
+                    V_batch = [V[int(i*self.hps['batch_size']):V.shape[0]]]
                     
                     # Train.
                     self.rbm_weight_update_func(V_batch)
                     self.hidden_bias_update_func(V_batch)
                     self.visible_bias_update_func(V_batch)
                 else:
-                    V_batch = V[int(i*self.hps['batch_size']):int((i+1)*self.hps['batch_size'])]
+                    V_batch = [V[int(i*self.hps['batch_size']):int((i+1)*self.hps['batch_size'])]]
                     
                     # Train.
                     self.rbm_weight_update_func(V_batch)

@@ -40,8 +40,8 @@ class MNISTClassifier(object):
         self.nn_arch_info = nn_arch_info
         
         # Design the model.
-        input_image = Input(shape=(self.IMAGE_SIZE, self.IMAGE_SIZE, 1), dtype=np.float32)
-        x = input_image/255
+        input_image = Input(shape=(self.IMAGE_SIZE, self.IMAGE_SIZE, 1))
+        x = Lambda(lambda x: x/255)(input_image)
         
         # RBM layer.
         self.rbm = RBM(self.hps['rbm_hps'], self.nn_arch_info['output_dim'])
