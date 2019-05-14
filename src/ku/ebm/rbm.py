@@ -63,7 +63,7 @@ class RBM(Layer):
     def compute_output_shape(self, input_shape):
         return (input_shape[0], self.output_dim)
     
-    def fit(self, V, verbose=0):
+    def fit(self, V, verbose=1):
         """Train RBM with the data V.
         
         Parameters
@@ -71,7 +71,7 @@ class RBM(Layer):
         V : 2d numpy array
             Visible data (batch size x input_dim).
         verbose : integer
-            Verbose mode (default, 0).
+            Verbose mode (default, 1).
         """
         num_step = V.shape[0] // self.hps['batch_size'] \
             if V.shape[0] % self.hps['batch_size'] == 0 else V.shape[0] // self.hps['batch_size'] + 1 # Exception processing?

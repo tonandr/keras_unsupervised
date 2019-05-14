@@ -29,23 +29,25 @@ from keras import optimizers
 
 from ku.ebm.rbm import RBM 
 
+os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
+os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
+
 class MNISTClassifier(object):
     """MNIST digit classifier using the RBM + Softmax model."""
     
     # Constants.
-    IMAGE_SIZE = 28 # Symmetry.
+    IMAGE_SIZE = 784
     
     def __init__(self, hps, nn_arch_info, model_loading=False):
         self.hps = hps
         self.nn_arch_info = nn_arch_info
         
         # Design the model.
-        input_image = Input(shape=(self.IMAGE_SIZE, self.IMAGE_SIZE, 1))
+        input_image = Input(shape=(self.IMAGE_SIZE,))
         x = Lambda(lambda x: x/255)(input_image)
         
         # RBM layer.
         self.rbm = RBM(self.hps['rbm_hps'], self.nn_arch_info['output_dim'])
-        x = Flatten()(x)
         x = self.rbm(x) #?
         
         # Softmax layer.
@@ -87,10 +89,12 @@ class MNISTClassifier(object):
         
         for i in range(train_df.shape[0]):
             V.append(train_df.iloc[i, 1:].values)
-            gt.append(np.asarray([train_df.iloc[i,0]]))
+            t_gt = np.zeros(shape=(10,))
+            t_gt[train_df.iloc[i,0]] = 1.
+            gt.append(t_gt)
         
         V = np.asarray(V, dtype=np.float32)
-        gt = np.asarray(gt, dtype=np.int32)
+        gt = np.asarray(gt, dtype=np.float32)
         
         return V, gt
 
