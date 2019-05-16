@@ -29,40 +29,60 @@ from keras import optimizers
 
 from ku.ebm.rbm import RBM 
 
-os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
-os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
+#os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
+#os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
+
+# Constants.
+DEBUG = True
+MULTI_GPU = False
+NUM_GPUS = 4
 
 class MNISTClassifier(object):
     """MNIST digit classifier using the RBM + Softmax model."""
-    
     # Constants.
+    MODEL_PATH = 'digit_classificaton_model.h5'
     IMAGE_SIZE = 784
     
     def __init__(self, hps, nn_arch_info, model_loading=False):
         self.hps = hps
         self.nn_arch_info = nn_arch_info
-        
-        # Design the model.
-        input_image = Input(shape=(self.IMAGE_SIZE,))
-        x = Lambda(lambda x: x/255)(input_image)
-        
-        # RBM layer.
-        self.rbm = RBM(self.hps['rbm_hps'], self.nn_arch_info['output_dim'])
-        x = self.rbm(x) #?
-        
-        # Softmax layer.
-        output = Dense(10, activation='softmax')(x)
-        
-        # Create a model.
-        self.digit_classificaton_model = Model(inputs=[input_image], outputs=[output])
-        
-        opt = optimizers.Adam(lr=self.hps['lr']
-                                , beta_1=self.hps['beta_1']
-                                , beta_2=self.hps['beta_2']
-                                , decay=self.hps['decay'])
-        
-        self.digit_classificaton_model.compile(optimizer=opt, loss='categorical_crossentropy')
-        self.digit_classificaton_model.summary() 
+
+        if model_loading: 
+            if MULTI_GPU:
+                self.digit_classificaton_model = load_model(self.MODEL_PATH)
+                self.rbm = self.digit_classificaton_model.get_layer('rbm')
+                
+                self.digit_classificaton_parallel_model = multi_gpu_model(self.model, gpus = NUM_GPUS)
+                opt = optimizers.Adam(lr=self.hps['lr']
+                                        , beta_1=self.hps['beta_1']
+                                        , beta_2=self.hps['beta_2']
+                                        , decay=self.hps['decay']) 
+                self.digit_classificaton_parallel_model.compile(optimizer=opt, loss='mse') 
+            else:
+                self.digit_classificaton_model = load_model(self.MODEL_PATH)
+                self.rbm = self.digit_classificaton_model.get_layer('rbm')
+        else:        
+            # Design the model.
+            input_image = Input(shape=(self.IMAGE_SIZE,))
+            x = Lambda(lambda x: x/255)(input_image)
+            
+            # RBM layer.
+            self.rbm = RBM(self.hps['rbm_hps'], self.nn_arch_info['output_dim'], name='rbm')
+            x = self.rbm(x) #?
+            
+            # Softmax layer.
+            output = Dense(10, activation='softmax')(x)
+            
+            # Create a model.
+            self.digit_classificaton_model = Model(inputs=[input_image], outputs=[output])
+            
+            opt = optimizers.Adam(lr=self.hps['lr']
+                                    , beta_1=self.hps['beta_1']
+                                    , beta_2=self.hps['beta_2']
+                                    , decay=self.hps['decay'])
+            
+            self.digit_classificaton_model.compile(optimizer=opt, loss='categorical_crossentropy')
+            self.digit_classificaton_model.summary() 
 
     def train(self):
         """Train."""
@@ -75,11 +95,21 @@ class MNISTClassifier(object):
         self.rbm.fit(V)
         
         # Supervised learning.
-        self.digit_classificaton_model.fit(V
+        if MULTI_GPU:
+            self.digit_classificaton_parallel_model.fit(V
+                                           , gt
+                                           , batch_size=self.hps['batch_size']
+                                           , epochs=self.hps['epochs']
+                                           , verbose=1)        
+        else:
+            self.digit_classificaton_model.fit(V
                                            , gt
                                            , batch_size=self.hps['batch_size']
                                            , epochs=self.hps['epochs']
                                            , verbose=1)
+
+        print('Save the model.')            
+        self.digit_classificaton_model.save(self.MODEL_PATH)
     
     def _load_training_data(self):
         """Load training data."""
@@ -97,6 +127,34 @@ class MNISTClassifier(object):
         gt = np.asarray(gt, dtype=np.float32)
         
         return V, gt
+    
+    def test(self):
+        """Test."""
+        # Load test data.
+        V = self.load_test_data()
+        
+        # Predict digits.
+        res = self.digit_classificaton_model.predict(V
+                                                     , verbose=1)
+        
+        # Record results into a file.
+        with open('solution.csv', 'w') as f:
+            f.write('ImageId, Label\n')
+            
+            for i, v in enumerate(res):
+                f.write(str(i + 1) + ',' + str(np.argmax(v)) + '\n') 
+        
+    def _load_test_data(self):
+        """Load test data."""
+        test_df = pd.read_csv('test.csv')
+        V = []
+        
+        for i in range(test_df.shape[0]):
+            V.append(test_df.iloc[i, :].values)
+        
+        V = np.asarray(V, dtype=np.float32)
+        
+        return V       
 
 def main(args):
     """Main.

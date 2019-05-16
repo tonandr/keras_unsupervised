@@ -33,10 +33,9 @@ class RBM(Layer):
                                            , shape=(self.output_dim, )
                                            , initializer='uniform'
                                            , trainable=True)
-        self.visible_bias = self.add_weight(name='rbm_visible_bias'
-                                           , shape=(input_shape[1], )
-                                           , initializer='uniform'
-                                           , trainable=True)
+        self.visible_bias = K.variable(initializers.get('uniform')((input_shape[1], ))
+                            , dtype=K.floatx()
+                            , name='rbm_visible_bias')
         
         # Make symbolic computation objects.
         # Transform visible units.
@@ -75,40 +74,49 @@ class RBM(Layer):
         """
         num_step = V.shape[0] // self.hps['batch_size'] \
             if V.shape[0] % self.hps['batch_size'] == 0 else V.shape[0] // self.hps['batch_size'] + 1 # Exception processing?
-        
-        # Contrastive divergence.
-        v_pos = self.input_visible
-        h_pos = self.transform
-        v_neg = K.cast(K.less(K.random_uniform(shape=(self.hps['batch_size'], V.shape[1]))
-                       , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) + self.visible_bias)), dtype=np.float32)
-        h_neg = K.sigmoid(K.dot(v_neg, self.rbm_weight) + self.hidden_bias)
-        update = K.transpose(K.transpose(K.dot(K.transpose(v_pos), h_pos)) - K.dot(K.transpose(h_neg), v_neg))
-        self.rbm_weight_update_func = K.function([self.input_visible], 
-                                [K.update_add(self.rbm_weight, self.hps['lr'] * update)])
-        self.hidden_bias_update_func = K.function([self.input_visible], 
-                                [K.update_add(self.hidden_bias, self.hps['lr'] * (K.sum(h_pos, axis=0) - K.sum(h_neg, axis=0)))])
-        self.visible_bias_update_func = K.function([self.input_visible], 
-                                [K.update_add(self.visible_bias, self.hps['lr'] * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
-        
+             
         for k in range(self.hps['epochs']):
             if verbose == 1:
-                print(k, '/', self.hps['epochs'], ' epochs')
-                
+                print(k + 1, '/', self.hps['epochs'], ' epochs')
+
+            # Contrastive divergence.
+            v_pos = self.input_visible
+            h_pos = self.transform
+            v_neg = K.cast(K.less(K.random_uniform(shape=(self.hps['batch_size'], V.shape[1]))
+                    , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) + self.visible_bias))
+                    , dtype=np.float32)
+            h_neg = K.sigmoid(K.dot(v_neg, self.rbm_weight) + self.hidden_bias)
+            update = K.transpose(K.transpose(K.dot(K.transpose(v_pos), h_pos)) \
+                                 - K.dot(K.transpose(h_neg), v_neg))
+            self.rbm_weight_update_func = K.function([self.input_visible]
+                                            , [K.update_add(self.rbm_weight, self.hps['lr'] * update)])
+            self.hidden_bias_update_func = K.function([self.input_visible]
+                                            , [K.update_add(self.hidden_bias, self.hps['lr'] \
+                                            * (K.sum(h_pos, axis=0) - K.sum(h_neg, axis=0)))])
+            self.visible_bias_update_func = K.function([self.input_visible]
+                                            , [K.update_add(self.visible_bias, self.hps['lr'] \
+                                            * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
+    
             for i in range(num_step):
                 if i == (num_step - 1):
                     # Contrastive divergence.
                     v_pos = self.input_visible
                     h_pos = self.transform
-                    v_neg = K.cast(K.less(K.random_uniform(shape=(V.shape[0] - int(i*self.hps['batch_size']), V.shape[1])) #?
-                                   , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) + self.visible_bias)), dtype=np.float32)
+                    v_neg = K.cast(K.less(K.random_uniform(shape=(V.shape[0] - int(i*self.hps['batch_size'])
+                                   , V.shape[1])) #?
+                                   , K.sigmoid(K.dot(h_pos, K.transpose(self.rbm_weight)) \
+                                   + self.visible_bias)), dtype=np.float32)
                     h_neg = K.sigmoid(K.dot(v_neg, self.rbm_weight) + self.hidden_bias)
-                    update = K.transpose(K.transpose(K.dot(K.transpose(v_pos), h_pos)) - K.dot(K.transpose(h_neg), v_neg))
-                    self.rbm_weight_update_func = K.function([self.input_visible], 
-                                            [K.update_add(self.rbm_weight, self.hps['lr'] * update)])
-                    self.hidden_bias_update_func = K.function([self.input_visible], 
-                                            [K.update_add(self.hidden_bias, self.hps['lr'] * (K.sum(h_pos, axis=0) - K.sum(h_neg, axis=0)))])
-                    self.visible_bias_update_func = K.function([self.input_visible], 
-                                            [K.update_add(self.visible_bias, self.hps['lr'] * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
+                    update = K.transpose(K.transpose(K.dot(K.transpose(v_pos), h_pos)) \
+                                         - K.dot(K.transpose(h_neg), v_neg))
+                    self.rbm_weight_update_func = K.function([self.input_visible]
+                                                , [K.update_add(self.rbm_weight, self.hps['lr'] * update)])
+                    self.hidden_bias_update_func = K.function([self.input_visible]
+                                                 , [K.update_add(self.hidden_bias, self.hps['lr'] \
+                                                 * (K.sum(h_pos, axis=0) - K.sum(h_neg, axis=0)))])
+                    self.visible_bias_update_func = K.function([self.input_visible]
+                                                  , [K.update_add(self.visible_bias, self.hps['lr'] \
+                                                  * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
 
                     V_batch = [V[int(i*self.hps['batch_size']):V.shape[0]]]
                     
