@@ -49,7 +49,7 @@ class MNISTClassifier(object):
 
         if model_loading: 
             if MULTI_GPU:
-                self.digit_classificaton_model = load_model(self.MODEL_PATH)
+                self.digit_classificaton_model = load_model(self.MODEL_PATH, custom_objects={'RBM': RBM}) # Custom layer loading problem?
                 self.rbm = self.digit_classificaton_model.get_layer('rbm')
                 
                 self.digit_classificaton_parallel_model = multi_gpu_model(self.model, gpus = NUM_GPUS)
@@ -59,7 +59,7 @@ class MNISTClassifier(object):
                                         , decay=self.hps['decay']) 
                 self.digit_classificaton_parallel_model.compile(optimizer=opt, loss='mse') 
             else:
-                self.digit_classificaton_model = load_model(self.MODEL_PATH)
+                self.digit_classificaton_model = load_model(self.MODEL_PATH, custom_objects={'RBM': RBM})
                 self.rbm = self.digit_classificaton_model.get_layer('rbm')
         else:        
             # Design the model.
@@ -92,9 +92,11 @@ class MNISTClassifier(object):
         # Semi-supervised learning.
         # Unsupervised learning.
         # RBM training.
+        print('Train the RBM model.')
         self.rbm.fit(V)
         
         # Supervised learning.
+        print('Train the NN model.')
         if MULTI_GPU:
             self.digit_classificaton_parallel_model.fit(V
                                            , gt
@@ -118,7 +120,7 @@ class MNISTClassifier(object):
         gt = []
         
         for i in range(train_df.shape[0]):
-            V.append(train_df.iloc[i, 1:].values)
+            V.append(train_df.iloc[i, 1:].values/255)
             t_gt = np.zeros(shape=(10,))
             t_gt[train_df.iloc[i,0]] = 1.
             gt.append(t_gt)
@@ -131,7 +133,7 @@ class MNISTClassifier(object):
     def test(self):
         """Test."""
         # Load test data.
-        V = self.load_test_data()
+        V = self._load_test_data()
         
         # Predict digits.
         res = self.digit_classificaton_model.predict(V
@@ -139,7 +141,7 @@ class MNISTClassifier(object):
         
         # Record results into a file.
         with open('solution.csv', 'w') as f:
-            f.write('ImageId, Label\n')
+            f.write('ImageId,Label\n')
             
             for i, v in enumerate(res):
                 f.write(str(i + 1) + ',' + str(np.argmax(v)) + '\n') 
@@ -150,7 +152,7 @@ class MNISTClassifier(object):
         V = []
         
         for i in range(test_df.shape[0]):
-            V.append(test_df.iloc[i, :].values)
+            V.append(test_df.iloc[i, :].values/255)
         
         V = np.asarray(V, dtype=np.float32)
         
@@ -191,6 +193,35 @@ def main(args):
         
         ts = time.time()
         mc.train()
+        mc.test()
+        te = time.time()
+        
+        print('Elasped time: {0:f}s'.format(te-ts))
+
+    if args.mode == 'test':
+        # Get arguments.      
+        nn_arch_info['output_dim'] = int(args.output_dim)   
+        
+        hps['lr'] = float(args.lr)
+        hps['beta_1'] = float(args.beta_1)
+        hps['beta_2'] = float(args.beta_2)
+        hps['decay'] = float(args.decay)
+        hps['batch_size'] = int(args.batch_size)
+        hps['epochs'] = int(args.epochs)
+        
+        rbm_hps = {}
+        rbm_hps['lr'] = float(args.rbm_lr)
+        rbm_hps['batch_size'] = int(args.rbm_batch_size)
+        rbm_hps['epochs'] = int(args.rbm_epochs)
+        hps['rbm_hps'] = rbm_hps        
+        
+        model_loading = False if int(args.model_loading) == 0 else True        
+        
+        # Train.
+        mc = MNISTClassifier(hps, nn_arch_info, model_loading)
+        
+        ts = time.time()
+        mc.test()
         te = time.time()
         
         print('Elasped time: {0:f}s'.format(te-ts))

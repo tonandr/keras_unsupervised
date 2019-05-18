@@ -48,6 +48,12 @@ class RBM(Layer):
         self.inv_transform = K.sigmoid(K.dot(self.input_hidden, K.transpose(self.rbm_weight)) + self.visible_bias)
         self.inv_transform_func = K.function([self.input_hidden], [self.inv_transform])
         
+        # Calculate free energy.
+        self.free_energy = -1 * (K.squeeze(K.dot(self.input_visible, K.expand_dims(self.visible_bias, axis=-1)), -1) +\
+                                K.sum(K.log(1 + K.exp(K.dot(self.input_visible, self.rbm_weight) +\
+                                                self.hidden_bias)), axis=-1))
+        self.free_energy_func = K.function([self.input_visible], [self.free_energy])
+
         super(RBM, self).build(input_shape)
         
     def call(self, x):
@@ -61,6 +67,9 @@ class RBM(Layer):
         
     def compute_output_shape(self, input_shape):
         return (input_shape[0], self.output_dim)
+    
+    def cal_free_energy(self, v):
+        return self.free_energy_func(v)
     
     def fit(self, V, verbose=1):
         """Train RBM with the data V.
@@ -96,7 +105,10 @@ class RBM(Layer):
             self.visible_bias_update_func = K.function([self.input_visible]
                                             , [K.update_add(self.visible_bias, self.hps['lr'] \
                                             * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
-    
+            
+            # Create the fist visible nodes sampling object.
+            self.sample_first_visible = K.function([self.input_visible]
+                                                , [v_neg])       
             for i in range(num_step):
                 if i == (num_step - 1):
                     # Contrastive divergence.
@@ -118,6 +130,10 @@ class RBM(Layer):
                                                   , [K.update_add(self.visible_bias, self.hps['lr'] \
                                                   * (K.sum(v_pos, axis=0) - K.sum(v_neg, axis=0)))])
 
+                    # Create the fist visible nodes sampling object.
+                    self.sample_first_visible = K.function([self.input_visible]
+                                                , [v_neg])
+
                     V_batch = [V[int(i*self.hps['batch_size']):V.shape[0]]]
                     
                     # Train.
@@ -130,4 +146,17 @@ class RBM(Layer):
                     # Train.
                     self.rbm_weight_update_func(V_batch)
                     self.hidden_bias_update_func(V_batch)
-                    self.visible_bias_update_func(V_batch)       
+                    self.visible_bias_update_func(V_batch)
+            
+                # Calculate a training score by each step.
+                # Free energy of the input visible nodes.
+                fe = self.cal_free_energy(V_batch)
+                
+                # Free energy of the first sampled visible nodes.
+                V_p_batch = self.sample_first_visible(V_batch)
+                fe_p = self.cal_free_energy(V_p_batch)
+                
+                score = np.mean(np.abs(fe[0] - fe_p[0])) # Scale?
+                print('{0:d}/{1:d}, score: {2:f}'.format(i + 1, num_step, score))
+
+                   
