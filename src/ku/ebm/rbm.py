@@ -12,15 +12,21 @@ Revision:
 import numpy as np
 
 from keras import backend as K
-from keras.layers import Layer, Input
-from tensorflow.keras import initializers
+from keras.layers import Layer
+from keras import initializers
+
+# Constants.
+MODE_BERNOULLI = 0
+MODE_REAL = 1
+MODE_COMPLEX = 2
 
 class RBM(Layer):
     """Restricted Boltzmann Machine based on Keras."""
-    def __init__(self, hps, output_dim, name=None, **kwargs):
+    def __init__(self, hps, output_dim, name=None, mode=MODE_BERNOULLI, **kwargs):
         self.hps = hps
         self.output_dim = output_dim
         self.name = name
+        self.mode = mode
         super(RBM, self).__init__(**kwargs)
     
     def build(self, input_shape):
@@ -45,7 +51,12 @@ class RBM(Layer):
   
         # Transform hidden units.      
         self.input_hidden = K.placeholder(shape=(None, self.output_dim), name='input_hidden')
-        self.inv_transform = K.sigmoid(K.dot(self.input_hidden, K.transpose(self.rbm_weight)) + self.visible_bias)
+        
+        if self.mode == MODE_BERNOULLI:
+            self.inv_transform = K.sigmoid(K.dot(self.input_hidden, K.transpose(self.rbm_weight)) + self.visible_bias)
+        elif self.mode == MODE_REAL:
+            pass
+                     
         self.inv_transform_func = K.function([self.input_hidden], [self.inv_transform])
         
         # Calculate free energy.
@@ -158,5 +169,13 @@ class RBM(Layer):
                 
                 score = np.mean(np.abs(fe[0] - fe_p[0])) # Scale?
                 print('{0:d}/{1:d}, score: {2:f}'.format(i + 1, num_step, score))
-
-                   
+    
+    def get_config(self):
+        """Get configuration."""
+        config = {'hps': self.hps
+                  , 'output_dim': self.output_dim
+                  , 'name': self.name}
+        base_config = super(RBM, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+        
+        

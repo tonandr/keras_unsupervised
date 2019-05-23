@@ -1,0 +1,1 @@
+--mode train --output_dim 128 --lr 0.001 --beta_1 0.99 --beta_2 0.99 --decay 0.0 --batch_size 128 --epochs 1 --rbm_lr 0.001 --rbm_batch_size 128 --rbm_epochs 1 --model_loading 0

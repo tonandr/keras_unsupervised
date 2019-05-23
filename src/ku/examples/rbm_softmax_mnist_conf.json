@@ -1,0 +1,23 @@
+{
+	"mode" : "train",
+	"hps" : {
+		"lr" : 0.001,
+		"beta_1" : 0.99,
+		"beta_2" : 0.99,
+		"decay" : 0.0,
+		"epochs" : 1,
+		"batch_size" : 128
+	},
+	
+	"rbm_hps" : {
+		"lr" : 0.001,
+		"epochs" : 1,
+		"batch_size" : 128
+	},
+			
+	"nn_arch" : {
+		"output_dim" : 128
+	},
+			
+	"model_loading": false
+}
