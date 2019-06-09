@@ -17,8 +17,10 @@ from keras import initializers
 
 # Constants.
 MODE_BERNOULLI = 0
-MODE_REAL = 1
+MODE_GAUSSIAN = 1
 MODE_COMPLEX = 2
+
+SIGMA = 1.0
 
 class RBM(Layer):
     """Restricted Boltzmann Machine based on Keras."""
@@ -44,20 +46,29 @@ class RBM(Layer):
                             , name='rbm_visible_bias')
         
         # Make symbolic computation objects.
-        # Transform visible units.
-        self.input_visible = K.placeholder(shape=(None, input_shape[1]), name='input_visible')
-        self.transform = K.sigmoid(K.dot(self.input_visible, self.rbm_weight) + self.hidden_bias)
-        self.transform_func = K.function([self.input_visible], [self.transform])
-  
-        # Transform hidden units.      
-        self.input_hidden = K.placeholder(shape=(None, self.output_dim), name='input_hidden')
-        
-        if self.mode == MODE_BERNOULLI:
+        if self.mode == MODE_BERNOULLI: 
+            # Transform visible units.
+            self.input_visible = K.placeholder(shape=(None, input_shape[1]), name='input_visible')
+            self.transform = K.sigmoid(K.dot(self.input_visible, self.rbm_weight) + self.hidden_bias)
+            self.transform_func = K.function([self.input_visible], [self.transform])
+      
+            # Transform hidden units.      
+            self.input_hidden = K.placeholder(shape=(None, self.output_dim), name='input_hidden')
             self.inv_transform = K.sigmoid(K.dot(self.input_hidden, K.transpose(self.rbm_weight)) + self.visible_bias)
-        elif self.mode == MODE_REAL:
-            pass
-                     
-        self.inv_transform_func = K.function([self.input_hidden], [self.inv_transform])
+            self.inv_transform_func = K.function([self.input_hidden], [self.inv_transform])
+        elif self.mode == MODE_GAUSSIAN:
+            # Transform visible units.
+            self.input_visible = K.placeholder(shape=(None, input_shape[1]), name='input_visible')
+            self.transform = K.relu(K.dot(self.input_visible, self.rbm_weight) + self.hidden_bias)
+            self.transform_func = K.function([self.input_visible], [self.transform])
+      
+            # Transform hidden units.      
+            self.input_hidden = K.placeholder(shape=(None, self.output_dim), name='input_hidden')
+            self.inv_transform = K.sigmoid(K.dot(self.input_hidden, K.transpose(self.rbm_weight)) - self.visible_bias)
+            self.inv_transform_func = K.function([self.input_hidden], [self.inv_transform])
+        else:
+            # TODO
+            pass            
         
         # Calculate free energy.
         self.free_energy = -1 * (K.squeeze(K.dot(self.input_visible, K.expand_dims(self.visible_bias, axis=-1)), -1) +\

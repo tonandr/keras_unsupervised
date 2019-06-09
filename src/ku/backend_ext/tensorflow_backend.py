@@ -6,5 +6,4 @@ Created on 2019. 5. 23.
 
 import tensorflow as tf
 
-def random_multinomial(x, ):
         
