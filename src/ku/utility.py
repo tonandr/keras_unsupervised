@@ -33,8 +33,12 @@ def reverse_model(model):
     output_layers = [layer for layer in layer if layer.name in output_layer_names]
     
     # Reconstruct the model reversely.
-
-def _reverse_output(layer):
+    outputs = model.outputs
+    
+    # About the first output tensor.
+    output = outputs[0]
+    
+def _reverse_output(layer, tensor):
     """Reverse output layers recursively.
     
     Parameters
@@ -63,12 +67,3 @@ def _reverse_output(layer):
         return r_dense_layer
     else:
         pass
-    
-    
-    
-    
-    
-    
-    
-    
-    

@@ -18,6 +18,7 @@ import pandas as pd
 
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Lambda, Embedding, Flatten, multiply, LeakyReLU, Conv2D, Conv2DTranspose
+from keras.activations import sigmoid
 from keras.utils import multi_gpu_model
 from keras import optimizers
 import keras.backend as K 
@@ -207,7 +208,7 @@ class StyleGAN(AbstractGAN):
         x = Dense(1)(x)
         
         # Last layer.
-        output = K.sum(x * labels, axis=1, keepdims=True) #?
+        output = sigmoid(K.sum(x * labels, axis=1, keepdims=True)) #?
         
         self.dist = Model(inputs=[images, labels], outputs=[output])       
                    
