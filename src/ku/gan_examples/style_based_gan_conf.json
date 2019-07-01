@@ -1,0 +1,45 @@
+{
+	"mode" : "train",
+	"raw_data_path" : ??,
+	"model_loading" : false,
+	"multi_gpu" : false,
+	"num_gpus" : 4,
+	"hps" : {
+		"lr" : 0.001,
+		"beta_1" : 0.99,
+		"beta_2" : 0.99,
+		"decay" : 0.0,
+		"epochs" : 1,
+		"batch_step" : 1,
+		"disc_k_step" : 1,
+		"mini_batch_size" :1,
+		"batch_size" : 1,
+		"mixing_prob" : 0.9,
+		"trunc_psi" : 0.0,
+		"trunc_cufoff" : 8,
+		"trunc_momentum" : 0.99
+	},
+	"nn_arch" : {
+		"label_usage" : true
+	},
+	"map_hps" : {
+	},	
+	"map_nn_arch" : {
+		"latent_dim" : 512,
+		"dense1_dim" : 512,
+		"num_classes" : ?,
+		"dlatent_dim" : 512
+	},
+	"syn_hps" : {
+		"ch_base" : ?,
+		"max_ch" : ?
+	},	
+	"sync_nn_arch" : {
+		"resolution" : ?,
+		"num_layers" : ?,
+	},			
+	"disc_hps" : {
+	},	
+	"disc_nn_arch" : {
+	}
+}

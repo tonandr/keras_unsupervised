@@ -26,6 +26,7 @@ MODE_COMPLEX = 2 # TODO
 
 class DBN(object):
     """Deep belief network."""
+    
     def add_stack(self, rbm_layer):
         """Add a rbm layer to the dbn stack.
         

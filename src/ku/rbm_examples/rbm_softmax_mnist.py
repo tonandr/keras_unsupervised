@@ -2,6 +2,9 @@
 Created on 2019. 5. 13.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
+License: BSD 3 clause.
+
+Revision:
 """
 
 from __future__ import absolute_import
