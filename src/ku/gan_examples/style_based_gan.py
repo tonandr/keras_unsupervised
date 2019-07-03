@@ -3,8 +3,6 @@ Created on 2019. 6. 19.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
 License: BSD 3 clause.
-
-Revision:
 """
 
 from __future__ import absolute_import
@@ -49,7 +47,7 @@ MULTI_GPU = False
 NUM_GPUS = 4
 
 class StyleGAN(AbstractGAN):
-    """Stype based GAN."""
+    """Style based GAN."""
 
     class TrainingSequenceUCCS(Sequence):
         """Training data set sequence."""
@@ -124,14 +122,14 @@ class StyleGAN(AbstractGAN):
         conf: dict
             Configuration.
         """
-        (AbstractGAN, super).__init__(conf)
+        super().__init__(conf)
         self.map_hps = conf['map_hps']
         self.map_nn_arch = conf['map_nn_arch']
         self.syn_hps = conf['syn_hps']
         self.syn_nn_arch = conf['syn_nn_arch']
         
-        self.dist_hps = conf['dist_hps']
-        self.dist_nn_arch = conf['dist_nn_arch']
+        self.disc_hps = conf['disc_hps']
+        self.disc_nn_arch = conf['disc_nn_arch']
         
         # Create models.
         if self.conf['model_loading'] != True:
@@ -150,14 +148,14 @@ class StyleGAN(AbstractGAN):
             Number of channels for each layer.
                 integer
         """
-        return np.min(int(self.syn_hps['ch_base']) / (2.0 ** layer_idx), self.syn_hps['max_ch'])
+        return np.min([int(self.syn_hps['ch_base']) / (2.0 ** layer_idx), self.syn_hps['max_ch']])
         
     def _create_generator(self):
         """Create generator."""
         # Design generator.
         # Mapping network and synthesis layer.
-        self._create_mapping_net()
         self._create_synthesizer()
+        self._create_mapping_net()
         
         # Inputs.
         inputs1 = self.map_model.inputs
@@ -179,34 +177,39 @@ class StyleGAN(AbstractGAN):
         
         self.gen = Model(inputs=inputs1, outputs=[output, output2], name='gen')
 
-    def _create_synthesizer(self): #?
+    def _create_synthesizer(self):
         """Create synthesis model."""
         
-        # Check exception.
-        if hasattr(self, 'mapping_model') != True:
-            raise RuntimeError('Mapping model must be created before.')
-        
+        # Check exception.?        
         # Design the model according to the final image resolution.
         res_log2 = int(np.log2(self.syn_nn_arch['resolution']))
         assert self.syn_nn_arch['resolution'] == 2 ** res_log2 and self.syn_nn_arch['resolution'] >= 4 #?
-        self.syn_nn_arch['num_layer'] = res_log2 * 2 - 2
+        self.syn_nn_arch['num_layers'] = res_log2 * 2 - 2
         
         # Disentangled latent inputs.
         dlatents = Input(shape=(self.syn_nn_arch['num_layers'], self.map_nn_arch['dlatent_dim']))
         
         # The first constant input layer.
         layer_idx = 0
-        x = K.constant(1.0, shape=tuple([4, 4, self._cal_num_chs(1)])) #?
-        n = K.random_normal(K.int_shape(x)) #?
+        x = K.constant(1.0, shape=tuple([1, 4, 4, self._cal_num_chs(1)]))
+        n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
         w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
         
-        x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, -1)))([x, n, w]) #?
+        x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
         x = LeakyReLU()(x)
-        x = AdaptiveIN()([x, Lambda(lambda x: x[..., layer_idx])(dlatents)]) # Pixel normalization?
+        x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
+        x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x) #?
+        dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
+        dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
+        x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
+                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
         
         layer_idx +=1
         x = LeakyReLU()(Conv2D(self._cal_num_chs(layer_idx), 3, padding='same')(x))
-        x = AdaptiveIN()([x, Lambda(lambda x: x[..., layer_idx])(dlatents)])
+        dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
+        dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
+        x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
+                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
         
         # Middle layers.
         while layer_idx <= res_log2:
@@ -215,24 +218,34 @@ class StyleGAN(AbstractGAN):
                                 , strides=2
                                 , padding='same')(x) # Blur?
                                 
-            n = K.random_normal(K.int_shape(x)) #?
+            n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
             w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
             
-            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, -1)))([x, n, w]) #?
+            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
-            x = AdaptiveIN()([x, Lambda(lambda x: x[..., (layer_idx + 1)*2 - 4])(dlatents)]) # Pixel normalization?
+            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
+            x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x) #?
+            dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
+            dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
+            x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
+                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
                         
             x = Conv2D(filters=self._cal_num_chs(layer_idx)
                        , kernel_size=3
                        , strides=1
                        , padding='same')(x)
         
-            n = K.random_normal(K.int_shape(x)) #?
+            n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
             w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
             
-            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, -1)))([x, n, w]) #?
+            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
-            x = AdaptiveIN()([x, Lambda(lambda x: x[..., (layer_idx + 1)*2 - 3])(dlatents)]) # Pixel normalization?
+            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
+            x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x) #?
+            dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
+            dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
+            x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
+                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
             
             layer_idx +=1
         
@@ -247,6 +260,10 @@ class StyleGAN(AbstractGAN):
     def _create_mapping_net(self):
         """Create mapping network."""
         
+        # Check exception.
+        if hasattr(self, 'syn') != True:
+            raise RuntimeError('Synthesizer must be created before.')        
+        
         # Design mapping network.
         # Inputs.
         noises = Input(shape=(self.map_nn_arch['latent_dim'], ))
@@ -260,24 +277,20 @@ class StyleGAN(AbstractGAN):
                               , self.map_nn_arch['latent_dim'])(labels))
         
             # L2 normalization.
-            x = K.l2_normalize(multiply([x, l]), axis=-1) #?
+            x = Lambda(lambda x: K.l2_normalize(multiply([x[0], x[1]]), axis=-1))([x, l])
         
         # Mapping layers.
         for layer_idx in range(self.map_nn_arch['num_layers'] - 1):
             output_dim = self.map_nn_arch['dlatent_dim'] \
                 if layer_idx == self.map_nn_arch['num_layers'] - 1 \
-                else self.map_nn_arch['desne1_dim']
+                else self.map_nn_arch['dense1_dim']
             
             x = LeakyReLU()(Dense(output_dim)(x))
-        
-        layer_idx = self.map_nn_arch['num_layers'] - 1
-        
-        output_dim = self.map_nn_arch['dlatent_dim'] \
-            if layer_idx == self.map_nn_arch['num_layers'] - 1 \
-            else self.map_nn_arch['desne1_dim']
-        
-        output = LeakyReLU(name='map_output')(Dense(output_dim)(x)) 
-        
+                
+        output_dim = self.map_nn_arch['dlatent_dim']
+        x = LeakyReLU(name='map_output')(Dense(output_dim)(x))
+        output = Lambda(lambda x: K.repeat(x, self.syn_nn_arch['num_layers']))(x)
+         
         self.map = Model(inputs=[noises, labels] if self.nn_arch['label_usage'] else [noises]
                                     , outputs=[output], name='map')
 
@@ -323,10 +336,10 @@ class StyleGAN(AbstractGAN):
         # Last layer.
         if self.nn_arch['label_usage']:
             output = sigmoid(K.sum(x * labels, axis=1, keepdims=True)) #?
-            self.dist = Model(inputs=[images, labels], outputs=[output], name='dist')
+            self.disc = Model(inputs=[images, labels], outputs=[output], name='dist')
         else:
             output = sigmoid(K.sum(x, axis=1, keepdims=True)) #?
-            self.dist = Model(inputs=[images], outputs=[output], name='dist')
+            self.disc = Model(inputs=[images], outputs=[output], name='dist')
             
     def train(self):
         """Train."""
@@ -353,7 +366,7 @@ class StyleGAN(AbstractGAN):
         labels: 2d numpy array
             Labels.
         """ 
-        (AbstractGAN, super).generate(self, *args, **kwargs) #?
+        super().generate(self, *args, **kwargs) #?
         
         if self.conf['multi_gpu']:
             if self.nn_arch['label_usage']:

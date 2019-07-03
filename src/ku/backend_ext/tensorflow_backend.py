@@ -13,8 +13,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow.compiler.xla.xla_data_pb2 import PRED
-from keras.backend.cntk_backend import shape
 tfd = tfp.distributions
 
 def multivariate_normal_diag(loc=None

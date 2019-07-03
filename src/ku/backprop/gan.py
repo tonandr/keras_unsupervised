@@ -11,7 +11,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from abc import abstractmethod
+
+from abc import ABC, abstractmethod
 import warnings
 
 import numpy as np
@@ -39,7 +40,7 @@ def disc_ext_loss(y_true, y_pred):
 def disc_ext_loss2(y_true, y_pred):
     return 1.0 * K.log(1.0 - y_pred + EPSILON) #?
 
-class AbstractGAN(object):
+class AbstractGAN(ABC):
     """Abstract generative adversarial network."""
     
     # Constants.
@@ -97,10 +98,12 @@ class AbstractGAN(object):
     @abstractmethod
     def _create_generator(self):
         """Create the generator."""
+        pass
     
     @abstractmethod        
     def _create_discriminator(self):
         """Create the discriminator."""
+        pass
     
     def compile(self):
         """Create the GAN model and compile it."""
@@ -287,4 +290,5 @@ class AbstractGAN(object):
  
     @abstractmethod    
     def generate(self, *args, **kwargs):
-        """Generate styled images.""" 
+        """Generate styled images."""
+        pass 

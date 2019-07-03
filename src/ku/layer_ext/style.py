@@ -3,8 +3,6 @@ Created on 2019. 6. 27.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
 License: BSD 3 clause.
-
-Revision
 """
 
 from __future__ import absolute_import
@@ -117,4 +115,3 @@ class TruncationTrick(Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape
-
