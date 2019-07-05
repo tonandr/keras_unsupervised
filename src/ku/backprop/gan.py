@@ -2,15 +2,11 @@
 Created on 2019. 6. 17.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
-License: BSD 3 clause.
-
-Revision:
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 
 from abc import ABC, abstractmethod
 import warnings
@@ -176,9 +172,9 @@ class AbstractGAN(ABC):
         """
         num_samples = self.hps['mini_batch_size']
         
-        for e_i in self.hps['epochs']:
-            for s_i in self.hps['batch_step']:
-                for k_i in self.hps['disc_k_step']:
+        for e_i in range(self.hps['epochs']):
+            for s_i in range(self.hps['batch_step']):
+                for k_i in range(self.hps['disc_k_step']):
                     # Create x_inputs_b, x_outputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.
                     x_inputs_b = [x_inputs[i][np.random.rand(0, x_inputs[i].shape[0], num_samples)] \
                                   for i in range(len(x_inputs))]
@@ -253,9 +249,9 @@ class AbstractGAN(ABC):
         # Train.        
         num_samples = self.hps['mini_batch_size']
         
-        for e_i in self.hps['epochs']:
-            for s_i in self.hps['batch_step']:
-                for k_i in self.hps['disc_k_step']: #?
+        for e_i in range(self.hps['epochs']):
+            for s_i in range(self.hps['batch_step']):
+                for k_i in range(self.hps['disc_k_step']): #?
                     x_inputs, x_outputs = next(output_generator)
                     
                     # Create x_inputs_b, x_outputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.

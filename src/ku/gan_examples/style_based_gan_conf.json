@@ -1,6 +1,6 @@
 {
 	"mode" : "train",
-	"raw_data_path" : "D:\\topcoder\\ku_unsupervised\\src\\ku\\gan_examples\\resource",
+	"raw_data_path" : "D:\\topcoder\\keras_unsupervised\\src\\ku\\gan_examples\\resource",
 	"model_loading" : false,
 	"multi_gpu" : false,
 	"num_gpus" : 4,
@@ -12,11 +12,10 @@
 		"epochs" : 1,
 		"batch_step" : 100,
 		"disc_k_step" : 10,
-		"mini_batch_size" :10,
-		"batch_size" : 10,
+		"mini_batch_size" :1,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
-		"trunc_cufoff" : 8,
+		"trunc_cutoff" : 8,
 		"trunc_momentum" : 0.99
 	},
 	"nn_arch" : {

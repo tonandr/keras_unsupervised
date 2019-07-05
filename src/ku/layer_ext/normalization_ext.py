@@ -43,7 +43,7 @@ class AdaptiveINWithStyle(Layer):
         assert len(K.int_shape(x[1])) == 2 #?
         
         if self.axis < 0:
-            assert K.ndim(x[0]) + self.axis < 0
+            assert K.ndim(x[0]) + self.axis >= 0
             self.axis = K.ndim(x[0]) + self.axis #?
             
         reduce_axes = tuple([i for i in range(1, K.ndim(x[0])) if i != self.axis])
@@ -54,7 +54,7 @@ class AdaptiveINWithStyle(Layer):
         # Calculate mean and variance.
         c_mean = K.mean(c, axis=reduce_axes, keepdims=True)
         c_std = K.std(c, axis=reduce_axes, keepdims=True) + self.epsilon
-        s = K.reshape(s, [-1, 2, c.shape[1]] + [1] * (len(x.shape) - 2))
+        s = K.reshape(s, [-1, 2, c.shape[1]] + [1] * (len(c.shape) - 2))
         
         return (s[:, 0] + 1) * ((c - c_mean) / c_std) + s[:, 1] # Broadcasting?
                     
@@ -94,7 +94,7 @@ class AdaptiveIN(_Merge):
         assert K.int_shape(x[0]) == K.int_shape(x[1]) #?
         
         if self.axis < 0:
-            assert K.ndim(x[0]) + self.axis < 0
+            assert K.ndim(x[0]) + self.axis >= 0
             self.axis = K.ndim(x[0]) + self.axis #?
             
         reduce_axes = tuple([i for i in range(1, K.ndim(x[0])) if i != self.axis])

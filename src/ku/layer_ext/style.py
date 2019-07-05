@@ -48,7 +48,7 @@ class StyleMixingRegularization(_Merge):
         if self.mixing_prob is not None:
             cutoff = Ke.cond(
                 K.random_uniform([], 0.0, 1.0) < self.mixing_prob
-                , lambda: K.random_uniform([], 1, num_layers)
+                , lambda: K.random_uniform([], 1, num_layers, dtype=np.int32)
                 , lambda: num_layers) #?
             d = Ke.where(Ke.broadcast_to(np.arange(num_layers)[np.newaxis, :, np.newaxis] \
                                         < cutoff, K.shape(d1)), d1, d2) #?
@@ -78,7 +78,7 @@ class TruncationTrick(Layer):
         self.moving_mean_initializer = initializers.get(moving_mean_initializer)
 
     def build(self, input_shape):
-        self.moving_mean = self.add_weight(shape=input_shape[-1] # Last channel?
+        self.moving_mean = self.add_weight(shape=(input_shape[-1],) # Last channel?
                                            , name='moving_mean'
                                            , initializer=self.moving_mean_initializer
                                            , trainable=True) #?
@@ -96,10 +96,10 @@ class TruncationTrick(Layer):
         
         if self.cutoff is not None:
             beta = Ke.where(np.arange(num_layers)[np.newaxis, :, np.newaxis] < self.cutoff
-                            , self.psi * np.ones(shape=(1, num_layers, 1))
-                            , np.ones(shape=(1, num_layers, 1)))
+                            , self.psi * np.ones(shape=(1, num_layers, 1), dtype=np.float32)
+                            , np.ones(shape=(1, num_layers, 1), dtype=np.float32))
         else:
-            beta = np.ones(shape=(1, num_layers, 1))
+            beta = np.ones(shape=(1, num_layers, 1), dtype=np.float32)
     
         return self.moving_mean + (x - self.moving_mean) * beta
 

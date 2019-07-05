@@ -2,7 +2,6 @@
 Created on 2019. 6. 19.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
-License: BSD 3 clause.
 """
 
 from __future__ import absolute_import
@@ -26,17 +25,18 @@ from scipy.linalg import norm
 import h5py
 
 from keras.models import Model, load_model
-from keras.layers import Input, Dense, Lambda, Embedding, Flatten, multiply, LeakyReLU, Conv2D, Conv2DTranspose
+from keras.layers import Input, Dense, Lambda, Embedding, Flatten, multiply, LeakyReLU, Conv2D, Conv2DTranspose, DepthwiseConv2D
 from keras.activations import sigmoid
 from keras.utils import multi_gpu_model
 from keras import optimizers
 import keras.backend as K 
 from keras.engine.input_layer import InputLayer
-from keras.utils import Sequence
+from keras.utils import Sequence, plot_model
 
 from ku.backprop import AbstractGAN
 from ku.layer_ext import AdaptiveIN
 from ku.layer_ext.style import TruncationTrick, StyleMixingRegularization
+from ku.layer_ext.normalization_ext import AdaptiveINWithStyle
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -72,7 +72,7 @@ class StyleGAN(AbstractGAN):
             self.db = self.db.iloc[:, 1:]
             self.total_samples = self.db.shape[0]
             
-            self.batch_size = self.hps['batch_size']
+            self.batch_size = self.hps['mini_batch_size']
             self.hps['step'] = self.total_samples // self.batch_size
             
             if self.total_samples % self.batch_size != 0:
@@ -135,6 +135,7 @@ class StyleGAN(AbstractGAN):
         if self.conf['model_loading'] != True:
             self._create_generator()
             self._create_discriminator()
+            self.compile()
         
     def _cal_num_chs(self, layer_idx):
         """Calculate the number of channels for each synthesis layer.
@@ -148,7 +149,8 @@ class StyleGAN(AbstractGAN):
             Number of channels for each layer.
                 integer
         """
-        return np.min([int(self.syn_hps['ch_base']) / (2.0 ** layer_idx), self.syn_hps['max_ch']])
+        return int(np.min([int(self.syn_hps['ch_base']) / (2.0 ** layer_idx)
+                           , self.syn_hps['max_ch']]))
         
     def _create_generator(self):
         """Create generator."""
@@ -158,24 +160,34 @@ class StyleGAN(AbstractGAN):
         self._create_mapping_net()
         
         # Inputs.
-        inputs1 = self.map_model.inputs
-        output2 = Lambda(lambda x: x)(inputs1[1]) 
+        inputs1 = self.map.inputs
+        
+        if self.nn_arch['label_usage']:
+            output2 = Lambda(lambda x: x)(inputs1[1]) 
         
         # Disentangled latent.
-        dlatents = self.map(inputs1)
-        dlatents1 = self.syn(dlatents)
+        dlatents1 = self.map(inputs1)
     
         # Style mixing regularization.
-        inputs2 = [K.random_normal(K.shape(inputs1[0])), inputs1[1]]
-        dlatents2 = self.map_model(inputs2)
+        if self.nn_arch['label_usage']:
+            inputs2 = [Input(tensor=K.random_normal(K.shape(inputs1[0]))), inputs1[1]] #?
+        else:
+            inputs2 = Input(tensor=K.random_normal(K.shape(inputs1[0])))
+        
+        dlatents2 = self.map(inputs2)
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
         
         # Truncation trick.
-        output = TruncationTrick(psi = self.hps['trunc_psi']
-                 , cutoff = self.hps['trunc_cutoff']
-                 , momentum= self.hps['trunc_momentum'])(dlatents)
+        dlatents = TruncationTrick(psi=self.hps['trunc_psi']
+                 , cutoff=self.hps['trunc_cutoff']
+                 , momentum=self.hps['trunc_momentum'])(dlatents)
+
+        output1 = self.syn([dlatents] + self.syn.inputs[1:]) #?
         
-        self.gen = Model(inputs=inputs1, outputs=[output, output2], name='gen')
+        if self.nn_arch['label_usage']:
+            self.gen = Model(inputs=inputs1 + [inputs2[0]] + self.syn.inputs[1:], outputs=[output1, output2], name='gen') #?
+        else:
+            self.gen = Model(inputs=[inputs1, inputs2] + self.syn.inputs[1:], outputs=[output1], name='gen') #?
 
     def _create_synthesizer(self):
         """Create synthesis model."""
@@ -185,58 +197,73 @@ class StyleGAN(AbstractGAN):
         res_log2 = int(np.log2(self.syn_nn_arch['resolution']))
         assert self.syn_nn_arch['resolution'] == 2 ** res_log2 and self.syn_nn_arch['resolution'] >= 4 #?
         self.syn_nn_arch['num_layers'] = res_log2 * 2 - 2
+        internal_inputs = []
         
         # Disentangled latent inputs.
         dlatents = Input(shape=(self.syn_nn_arch['num_layers'], self.map_nn_arch['dlatent_dim']))
         
         # The first constant input layer.
+        res = 2
         layer_idx = 0
-        x = K.constant(1.0, shape=tuple([1, 4, 4, self._cal_num_chs(1)]))
+        x = K.constant(1.0, shape=tuple([1, 4, 4, self._cal_num_chs(res - 1)]))
         n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
         w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
         
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
         x = LeakyReLU()(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-        x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x) #?
+        x = Input(tensor=Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x)) #?
+        internal_inputs.append(x)
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
-        x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
-                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
+        x = AdaptiveINWithStyle()([x, dlatents_p]) #?
         
         layer_idx +=1
-        x = LeakyReLU()(Conv2D(self._cal_num_chs(layer_idx), 3, padding='same')(x))
+        x = Conv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
+        n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
+        w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
+        internal_inputs.append(n)    
+        internal_inputs.append(w) 
+        x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
+        x = LeakyReLU()(x)
+        x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
+        x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x)    
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
-        x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
-                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
+        x = AdaptiveINWithStyle()([x, dlatents_p])
         
         # Middle layers.
-        while layer_idx <= res_log2:
-            x = Conv2DTranspose(filters=self._cal_num_chs(layer_idx) #?
+        res = 3
+        while res <= res_log2:
+            layer_idx = res * 2 - 3
+            x = Conv2DTranspose(filters=self._cal_num_chs(res - 1) #?
                                 , kernel_size=3
                                 , strides=2
                                 , padding='same')(x) # Blur?
                                 
-            n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
-            w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
+            n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
+            w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
+            internal_inputs.append(n)    
+            internal_inputs.append(w) 
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
             x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-            x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x) #?
+            x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x)
             dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
             dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
-            x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
-                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
-                        
-            x = Conv2D(filters=self._cal_num_chs(layer_idx)
+            x = AdaptiveINWithStyle()([x, dlatents_p])
+            
+            layer_idx = res * 2 - 4            
+            x = Conv2D(filters=self._cal_num_chs(res - 1)
                        , kernel_size=3
                        , strides=1
                        , padding='same')(x)
         
-            n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
-            w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
+            n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
+            w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
+            internal_inputs.append(n)    
+            internal_inputs.append(w) 
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
@@ -244,10 +271,9 @@ class StyleGAN(AbstractGAN):
             x = Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x) #?
             dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
             dlatents_p = Dense(self.syn_nn_arch['dense1_dim'])(dlatents_p)
-            x = AdaptiveIN()([x, Lambda(lambda x: x[0][:, K.cast(x[1], dtype=np.int32)])\
-                          ([dlatents_p, K.constant(layer_idx, shape=[], dtype=np.int32)])]) #?
+            x = AdaptiveINWithStyle()([x, dlatents_p])
             
-            layer_idx +=1
+            res +=1
         
         # Last layer.
         output = Conv2D(filters=3
@@ -255,7 +281,7 @@ class StyleGAN(AbstractGAN):
                         , strides=1
                         , padding='same')(x)
                         
-        self.syn = Model(inputs=[dlatents], outputs=[output], name='syn')
+        self.syn = Model(inputs=[dlatents] + internal_inputs, outputs=[output], name='syn') #?
                          
     def _create_mapping_net(self):
         """Create mapping network."""
@@ -296,7 +322,7 @@ class StyleGAN(AbstractGAN):
 
     def _create_discriminator(self):
         """Create the discriminator."""
-        res = self.dist_nn_arch['resolution']
+        res = self.syn_nn_arch['resolution'] #?
         
         # Design the model according to the final image resolution.
         res_log2 = int(np.log2(res))
@@ -308,38 +334,44 @@ class StyleGAN(AbstractGAN):
             labels = Input(shape=(1, ), dtype=np.int32)
         
         # First layer.
-        x = Conv2D(filters=self._cal_num_chs(res_log2 - 1) #?
+        res = res_log2
+        x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=1
                    , padding='same'
                    , activation=LeakyReLU())(images) #?
                 
         # Middle layers.
-        for i in range(res_log2, 3, -1):
-            x = Conv2D(filters=self._cal_num_chs(i - 1) #?
+        for res in range(res_log2, 2, -1):
+            x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=1
                    , padding='same'
                    , activation=LeakyReLU())(x) #?
-            x = Conv2DTranspose(filters=self._cal_num_chs(i - 2)
-                                , kernel_size=3
-                                , strides=2
+            x = DepthwiseConv2D(kernel_size=3, padding='same')(x)
+            x = Conv2D(filters=self._cal_num_chs(res - 2) #?
+                   , kernel_size=3
+                   , padding='same')(x) #?
+            x = DepthwiseConv2D(kernel_size=3
                                 , padding='same'
-                                , activation=LeakyReLU())(x) #?
+                                , strides=2
+                                , activation=LeakyReLU())(x)                   
         
         # Layer for 4*4 size.
-        x = Conv2D(filters=self._cal_num_chs(1) #?
+        res = 2
+        x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=3
                    , padding='same'
                    , activation=LeakyReLU())(x) #?
-        x = Dense(self._cal_num_chs(0), activation=LeakyReLU())(x)
+        x = Flatten()(x)
+        x = Dense(self._cal_num_chs(res - 2), activation=LeakyReLU())(x)
         x = Dense(1)(x)
         
         # Last layer.
         if self.nn_arch['label_usage']:
-            output = sigmoid(K.sum(x * labels, axis=1, keepdims=True)) #?
-            self.disc = Model(inputs=[images, labels], outputs=[output], name='dist')
+            output = Lambda(lambda x: sigmoid(K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True)))([x, labels]) #?
+            self.disc = Model(inputs=[images, labels], outputs=[output], name='disc')
         else:
-            output = sigmoid(K.sum(x, axis=1, keepdims=True)) #?
-            self.disc = Model(inputs=[images], outputs=[output], name='dist')
+            output = Lambda(lambda x: sigmoid(K.sum(x[0], axis=1, keepdims=True)))(x)
+            self.disc = Model(inputs=[images], outputs=[output], name='disc')
             
     def train(self):
         """Train."""
@@ -353,7 +385,7 @@ class StyleGAN(AbstractGAN):
         self.fit_generator(generator
                            , max_queue_size=10
                            , workers=1
-                           , use_multiprocessing=True
+                           , use_multiprocessing=False
                            , shuffle=True) #?
 
     def generate(self, images, labels, *args, **kwargs):
