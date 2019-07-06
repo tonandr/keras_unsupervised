@@ -23,6 +23,8 @@ import keras.backend as K
 from keras.engine.input_layer import InputLayer
 from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from keras.engine.training_utils import iter_sequence_infinite
+from keras.utils import plot_model
+
 from _collections_abc import generator, Generator
 
 EPSILON = 1e-8
@@ -38,11 +40,7 @@ def disc_ext_loss2(y_true, y_pred):
 
 class AbstractGAN(ABC):
     """Abstract generative adversarial network."""
-    
-    # Constants.
-    GAN_PATH = 'style_gan_model.h5'
-    DISC_EXT_PATH = 'style_gan_disc_ext_model.h5'    
-    
+        
     def __init__(self, conf):
         """
         Parameters
@@ -110,8 +108,8 @@ class AbstractGAN(ABC):
         
         # Design gan according to input and output nodes for each model.        
         # Design and compile disc_ext.
-        x_inputs = self.disc.inputs  
-        x_outputs = self.disc(x_inputs)
+        x_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]  
+        x_outputs = [self.disc(x_inputs)]
         z_inputs = self.gen.inputs
         
         if self.conf['multi_gpu']:
@@ -119,9 +117,9 @@ class AbstractGAN(ABC):
                
         self.gen.trainable = False #?
         self.gen.name ='gen'    
-        z_outputs = self.gen(z_inputs)
+        z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.name = 'disc'
-        x2_outputs = self.disc(z_outputs)
+        x2_outputs = [self.disc(z_outputs)]
         
         self.disc_ext = Model(inputs=x_inputs + z_inputs, outputs=x_outputs + x2_outputs)        
     
@@ -130,36 +128,34 @@ class AbstractGAN(ABC):
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
 
-        disc_ext_losses1 = [disc_ext_loss for _ in len(x_outputs)] #?
-        disc_ext_losses2 = [disc_ext_loss2 for _ in len(x2_outputs)] #?        
-        self.dist_ext.compile(optimizer=opt
+        disc_ext_losses1 = [disc_ext_loss for _ in range(len(x_outputs))] #?
+        disc_ext_losses2 = [disc_ext_loss2 for _ in range(len(x2_outputs))] #?        
+        self.disc_ext.compile(optimizer=opt
                          , loss=disc_ext_losses1 + disc_ext_losses2 
-                         , loss_weights=-1.0)
+                         , loss_weights=[-1.0 for _ in range(len(x_outputs) + len(x2_outputs))])
         
         if self.conf['multi_gpu']:
             self.disc_ext_p = multi_gpu_model(self.gan, gpus=self.conf['num_gpus'])
             self.disc_ext_p.compile(optimizer=opt, loss=self.disc_ext.losses) #?                     
                
         # Design and compile gan.
-        z_inputs = self.gen.inputs    
-        z_outputs = self.gen(z_inputs)
-        self.dist.trainable = False #?
-        z_p_outputs = self.dist(z_outputs) #?
+        z_inputs = self.gen.inputs
+        self.gen.trainable = True #?     
+        z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
+        self.disc.trainable = False #?
+        z_p_outputs = [self.disc(z_outputs)] #?
 
-        self.gan = Model(inputs=[z_inputs], outputs=[z_p_outputs])
-        gan_losses = [gan_loss for _ in len(z_p_outputs)]
+        self.gan = Model(inputs=z_inputs, outputs=z_p_outputs)
+        gan_losses = [gan_loss for _ in range(len(z_p_outputs))]
         self.gan.compile(optimizer=opt
                          , loss=gan_losses #?
-                         , loss_weights=1.0)
+                         , loss_weights=[1.0 for _ in range(len(z_p_outputs))])
 
         if self.conf['multi_gpu']:
             self.gan_p = multi_gpu_model(self.gan, gpus=self.conf['num_gpus'])
             self.gan_p.compile(optimizer=opt, loss=self.gan.losses) #?
-                
-        # Save models.
-        self.disc_ext.save(self.DISC_EXT_PATH)
-        self.gan.save(self.GAN_PATH)
-            
+    
+    @abstractmethod                        
     def fit(self, x_inputs, x_outputs):
         """Train the GAN model.
         
@@ -170,41 +166,9 @@ class AbstractGAN(ABC):
         x_outputs : list.
             Ground truth data numpy array list.
         """
-        num_samples = self.hps['mini_batch_size']
-        
-        for e_i in range(self.hps['epochs']):
-            for s_i in range(self.hps['batch_step']):
-                for k_i in range(self.hps['disc_k_step']):
-                    # Create x_inputs_b, x_outputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.
-                    x_inputs_b = [x_inputs[i][np.random.rand(0, x_inputs[i].shape[0], num_samples)] \
-                                  for i in range(len(x_inputs))]
-                    x_outputs_b = [x_outputs[i][np.random.rand(0, x_outputs[i].shape[0], num_samples)] \
-                                   for i in range(len(x_outputs))]
-                    
-                    z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(i)[1:]))) \
-                                for i in range(len(self.gen.inputs()))]
-                    x2_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(i)[1:]))) \
-                                for i in range(len(self.disc.outputs()))]
-         
-                    # Train disc.
-                    if self.conf['multi_gpu']:
-                        self.disc_ext_p.train_on_batch(x_inputs_b + z_inputs_b
-                                 , x_outputs_b + x2_outputs_b, verbose=1) #?                    
-                    else:
-                        self.disc_ext.train_on_batch(x_inputs_b + z_inputs_b
-                                 , x_outputs_b + x2_outputs_b, verbose=1) #?
-        
-                z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(i)[1:]))) \
-                                for i in range(len(self.gen.inputs()))]
-                z_p_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(i)[1:]))) \
-                                for i in range(len(self.disc.outputs()))]
+        pass
 
-                # Train gan.
-                if self.conf['multi_gpu']:
-                    self.gan_p.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
-                else:
-                    self.gan.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
-
+    @abstractmethod  
     def fit_generator(self
                       , generator
                       , max_queue_size=10
@@ -226,63 +190,7 @@ class AbstractGAN(ABC):
         shuffle: Boolean
             Batch shuffling flag (default: True).
         """
-        
-        # Check exception.?        
-        # Get the output generator.
-        if workers > 0:
-            if isinstance(generator, Sequence):
-                enq = OrderedEnqueuer(generator
-                                  , use_multiprocessing=use_multiprocessing
-                                  , shuffle=shuffle)
-            else:
-                enq = GeneratorEnqueuer(Generator
-                                        , use_multiprocessing=use_multiprocessing)
-                
-            enq.start(workers=workers, max_queue_size=max_queue_size)
-            output_generator = enq.get()
-        else:
-            if isinstance(generator, Sequence):
-                output_generator = iter_sequence_infinite(generator)
-            else:
-                output_generator = generator
-        
-        # Train.        
-        num_samples = self.hps['mini_batch_size']
-        
-        for e_i in range(self.hps['epochs']):
-            for s_i in range(self.hps['batch_step']):
-                for k_i in range(self.hps['disc_k_step']): #?
-                    x_inputs, x_outputs = next(output_generator)
-                    
-                    # Create x_inputs_b, x_outputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.
-                    x_inputs_b = [x_inputs[i][np.random.rand(0, x_inputs[i].shape[0], num_samples)] \
-                                  for i in range(len(x_inputs))]
-                    x_outputs_b = [x_outputs[i][np.random.rand(0, x_outputs[i].shape[0], num_samples)] \
-                                   for i in range(len(x_outputs))]
-                    
-                    z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(i)[1:]))) \
-                                for i in range(len(self.gen.inputs()))]
-                    x2_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(i)[1:]))) \
-                                for i in range(len(self.disc.outputs()))]
-         
-                    # Train disc.
-                    if self.conf['multi_gpu']:
-                        self.disc_ext_p.train_on_batch(x_inputs_b + z_inputs_b
-                                 , x_outputs_b + x2_outputs_b, verbose=1) #?                    
-                    else:
-                        self.disc_ext.train_on_batch(x_inputs_b + z_inputs_b
-                                 , x_outputs_b + x2_outputs_b, verbose=1) #?
-        
-                z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(i)[1:]))) \
-                                for i in range(len(self.gen.inputs()))]
-                z_p_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(i)[1:]))) \
-                                for i in range(len(self.disc.outputs()))]
-                
-                # Train gan.
-                if self.conf['multi_gpu']:
-                    self.gan_p.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
-                else:
-                    self.gan.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
+        pass
  
     @abstractmethod    
     def generate(self, *args, **kwargs):

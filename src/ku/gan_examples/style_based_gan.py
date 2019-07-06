@@ -17,6 +17,7 @@ import platform
 import shutil
 from random import shuffle
 import json
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,8 @@ from keras.utils import multi_gpu_model
 from keras import optimizers
 import keras.backend as K 
 from keras.engine.input_layer import InputLayer
+from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
+from keras.engine.training_utils import iter_sequence_infinite
 from keras.utils import Sequence, plot_model
 
 from ku.backprop import AbstractGAN
@@ -48,6 +51,10 @@ NUM_GPUS = 4
 
 class StyleGAN(AbstractGAN):
     """Style based GAN."""
+
+    # Constants.
+    GAN_PATH = 'style_gan_model.h5'
+    DISC_EXT_PATH = 'style_gan_disc_ext_model.h5'  
 
     class TrainingSequenceUCCS(Sequence):
         """Training data set sequence."""
@@ -88,7 +95,7 @@ class StyleGAN(AbstractGAN):
             labels = []
             
             if self.batch_shuffle:
-                idxes = np.random.rand(0, self.total_samples, self.batch_size)
+                idxes = np.random.choice(self.total_samples, size=self.batch_size)
                 for bi in idxes:
                     image = imread(os.path.join(self.raw_data_path
                                                      , 'subject_faces'
@@ -337,32 +344,33 @@ class StyleGAN(AbstractGAN):
         res = res_log2
         x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=1
-                   , padding='same'
-                   , activation=LeakyReLU())(images) #?
+                   , padding='same')(images) #?
+        x = LeakyReLU()(x)
                 
         # Middle layers.
         for res in range(res_log2, 2, -1):
             x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=1
-                   , padding='same'
-                   , activation=LeakyReLU())(x) #?
+                   , padding='same')(x) #?
+            x = LeakyReLU()(x)
             x = DepthwiseConv2D(kernel_size=3, padding='same')(x)
             x = Conv2D(filters=self._cal_num_chs(res - 2) #?
                    , kernel_size=3
                    , padding='same')(x) #?
             x = DepthwiseConv2D(kernel_size=3
                                 , padding='same'
-                                , strides=2
-                                , activation=LeakyReLU())(x)                   
+                                , strides=2)(x)
+            x = LeakyReLU()(x)                   
         
         # Layer for 4*4 size.
         res = 2
         x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=3
-                   , padding='same'
-                   , activation=LeakyReLU())(x) #?
+                   , padding='same')(x) #?
+        x = LeakyReLU()(x)
         x = Flatten()(x)
-        x = Dense(self._cal_num_chs(res - 2), activation=LeakyReLU())(x)
+        x = Dense(self._cal_num_chs(res - 2))(x)
+        x = LeakyReLU()(x)
         x = Dense(1)(x)
         
         # Last layer.
@@ -387,6 +395,158 @@ class StyleGAN(AbstractGAN):
                            , workers=1
                            , use_multiprocessing=False
                            , shuffle=True) #?
+
+    def fit(self, x_inputs, x_outputs):
+        """Train the GAN model.
+        
+        Parameters
+        ----------
+        x_inputs : list.
+            Training data numpy array list.
+        x_outputs : list.
+            Ground truth data numpy array list.
+        """
+        num_samples = self.hps['mini_batch_size']
+        
+        for e_i in range(self.hps['epochs']):
+            for s_i in range(self.hps['batch_step']):
+                for k_i in range(self.hps['disc_k_step']):
+                    # Create x_inputs_b, x_outputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.
+                    x_inputs_b = [x_inputs[i][np.random.choice(x_inputs[i].shape[0], num_samples)] \
+                                  for i in range(len(x_inputs))] #?
+                    x_outputs_b = [x_outputs[i][np.random.choice(x_outputs[i].shape[0], num_samples)] \
+                                   for i in range(len(x_outputs))] #?
+                    
+                    if self.nn_arch['label_usage']:
+                        z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(0)[1:])))] \
+                            + [np.random.randint(self.map_nn_arch['num_classes'], (num_samples, 1))]
+                    else:
+                        z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.input_shape[1:])))]
+                        
+                    x2_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+         
+                    # Train disc.
+                    if self.conf['multi_gpu']:
+                        self.disc_ext_p.train_on_batch(x_inputs_b + z_inputs_b
+                                 , x_outputs_b + x2_outputs_b, verbose=1) #?                    
+                    else:
+                        self.disc_ext.train_on_batch(x_inputs_b + z_inputs_b
+                                 , x_outputs_b + x2_outputs_b, verbose=1) #?
+        
+                if self.nn_arch['label_usage']:
+                    z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(0)[1:])))] \
+                        + [np.random.randint(self.map_nn_arch['num_classes'], (num_samples, 1))]
+                else:
+                    z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.input_shape[1:])))]
+                
+                z_p_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+
+                # Train gan.
+                if self.conf['multi_gpu']:
+                    self.gan_p.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
+                else:
+                    self.gan.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
+
+        # Save models.
+        self.disc_ext.save(self.DISC_EXT_PATH)
+        self.gan.save(self.GAN_PATH)
+
+    def fit_generator(self
+                      , generator
+                      , max_queue_size=10
+                      , workers=1
+                      , use_multiprocessing=False
+                      , shuffle=True):
+        """Train the GAN model with the generator.
+        
+        Parameters
+        ----------
+        generator: Generator
+            Training data generator.
+        max_queue_size: Integer
+            Maximum size for the generator queue (default: 10).
+        workers: Integer
+            Maximum number of processes to get samples (default: 1, 0: main thread).
+        use_multiprocessing: Boolean
+            Multi-processing flag (default: False).
+        shuffle: Boolean
+            Batch shuffling flag (default: True).
+        """
+        
+        # Check exception.
+        if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
+            warnings.warn(UserWarning('For multi processing, use the instance of Sequence.'))
+        
+        try:        
+            # Get the output generator.
+            if workers > 0:
+                if isinstance(generator, Sequence):
+                    enq = OrderedEnqueuer(generator
+                                      , use_multiprocessing=use_multiprocessing
+                                      , shuffle=shuffle)
+                else:
+                    enq = GeneratorEnqueuer(generator
+                                            , use_multiprocessing=use_multiprocessing)
+                    
+                enq.start(workers=workers, max_queue_size=max_queue_size)
+                output_generator = enq.get()
+            else:
+                if isinstance(generator, Sequence):
+                    output_generator = iter_sequence_infinite(generator)
+                else:
+                    output_generator = generator
+            
+            # Train.        
+            num_samples = self.hps['mini_batch_size']
+            
+            for e_i in range(self.hps['epochs']):
+                for s_i in range(self.hps['batch_step']):
+                    for k_i in range(self.hps['disc_k_step']): #?
+                        x_inputs, x_outputs = next(output_generator)
+                        
+                        # Create x_inputs_b, x_outputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.
+                        x_inputs_b = [x_inputs]
+                        x_outputs_b = [x_outputs]
+                        
+                        if self.nn_arch['label_usage']:
+                            z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(0)[1:])))] \
+                                + [np.random.randint(self.map_nn_arch['num_classes'], (num_samples, 1))]
+                        else:
+                            z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.input_shape[1:])))]
+                            
+                        x2_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+             
+                        # Train disc.
+                        if self.conf['multi_gpu']:
+                            self.disc_ext_p.train_on_batch(x_inputs_b + z_inputs_b
+                                     , x_outputs_b + x2_outputs_b, verbose=1) #?                    
+                        else:
+                            self.disc_ext.train_on_batch(x_inputs_b + z_inputs_b
+                                     , x_outputs_b + x2_outputs_b, verbose=1) #?
+            
+                    if self.nn_arch['label_usage']:
+                        z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.get_input_shape_at(0)[1:])))] \
+                            + [np.random.randint(self.map_nn_arch['num_classes'], (num_samples, 1))]
+                    else:
+                        z_inputs_b = [np.random.rand(*list([num_samples] + list(self.gen.input_shape[1:])))]
+                    
+                    z_p_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+                    
+                    # Train gan.
+                    if self.conf['multi_gpu']:
+                        self.gan_p.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
+                    else:
+                        self.gan.train_on_batch(z_inputs_b, z_p_outputs_b, verbose=1)
+        finally:
+            try:
+                if enq is not None:
+                    enq.stop()
+            finally:
+                pass
+
+        # Save models.
+        self.disc_ext.save(self.DISC_EXT_PATH)
+        self.gan.save(self.GAN_PATH)
 
     def generate(self, images, labels, *args, **kwargs):
         """Generate styled images.
