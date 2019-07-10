@@ -110,6 +110,7 @@ class AbstractGAN(ABC):
         # Design and compile disc_ext.
         x_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]  
         x_outputs = [self.disc(x_inputs)]
+        
         z_inputs = self.gen.inputs
         
         if self.conf['multi_gpu']:

@@ -9,10 +9,10 @@
 		"beta_1" : 0.99,
 		"beta_2" : 0.99,
 		"decay" : 0.0,
-		"epochs" : 1,
+		"epochs" : 100,
 		"batch_step" : 100,
 		"disc_k_step" : 10,
-		"mini_batch_size" :1,
+		"mini_batch_size" :10,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
@@ -24,19 +24,18 @@
 	"map_hps" : {
 	},	
 	"map_nn_arch" : {
-		"latent_dim" : 512,
-		"dense1_dim" : 512,
+		"latent_dim" : 64,
+		"dense1_dim" : 64,
 		"num_classes" : 1081,
-		"dlatent_dim" : 512,
-		"num_layers" : 8
+		"dlatent_dim" : 64,
+		"num_layers" : 4
 	},
 	"syn_hps" : {
-		"ch_base" : 8192,
-		"max_ch" : 512
+		"ch_base" : 1024,
+		"max_ch" : 64
 	},	
 	"syn_nn_arch" : {
-		"resolution" : 256,
-		"dense1_dim" : 512
+		"resolution" : 64
 	},			
 	"disc_hps" : {
 	},	

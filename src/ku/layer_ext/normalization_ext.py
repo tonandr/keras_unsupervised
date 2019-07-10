@@ -40,7 +40,7 @@ class AdaptiveINWithStyle(Layer):
         x = inputs
         if isinstance(x, list) != True or len(x) != 2:
             raise ValueError('Input must be a list of two tensors.')
-        assert len(K.int_shape(x[1])) == 2 #?
+        assert len(K.int_shape(x[1])) == 2
         
         if self.axis < 0:
             assert K.ndim(x[0]) + self.axis >= 0
@@ -54,9 +54,9 @@ class AdaptiveINWithStyle(Layer):
         # Calculate mean and variance.
         c_mean = K.mean(c, axis=reduce_axes, keepdims=True)
         c_std = K.std(c, axis=reduce_axes, keepdims=True) + self.epsilon
-        s = K.reshape(s, [-1, 2, c.shape[1]] + [1] * (len(c.shape) - 2))
+        s = K.reshape(s, [-1, 2, 1, 1, c.shape[-1]]) #?
         
-        return (s[:, 0] + 1) * ((c - c_mean) / c_std) + s[:, 1] # Broadcasting?
+        return (s[:, 0] + 1) * ((c - c_mean) / c_std) + s[:, 1]
                     
     def get_config(self):
         """Get configuration."""

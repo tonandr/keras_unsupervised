@@ -41,10 +41,8 @@ def cond(pred
          , true_fn=None
          , false_fn=None
          , strict=False
-         , name=None
-         , fn1=None
-         , fn2=None):
-    return tf.cond(pred, true_fn, false_fn, strict, name, fn1, fn2)
+         , name=None):
+    return tf.cond(pred, true_fn, false_fn, strict, name)
 
 def broadcast_to(input
                  , shape
