@@ -12,7 +12,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
-    name='keras_unsupervised',  # Required
+    name='keras-unsupervised',  # Required
     version='0.1.0',  # Required
     description='Keras based unsupervised learning framework.',  # Optional
     long_description=long_description,  # Optional
@@ -34,7 +34,7 @@ setup(
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
 
         # Pick your license as you wish
-        'License :: OSI Approved :: MIT License',
+        'License :: OSI Approved :: BSD License',
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
@@ -79,7 +79,15 @@ setup(
     #
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['peppercorn'],  # Optional
+    install_requires=['tensorflow-gpu>=1.13.1'
+                      , 'tensorflow-probability>=0.6.0'
+                      , 'keras>=2.2.4'
+                      , 'numpy>=1.16.4'
+                      , 'pandas>=0.24.2'
+                      , 'h5py>=2.8.0'
+                      , 'scikit-image>=0.15.0'
+                      , 'scipy>=1.2.1'
+                      , 'opencv-conrtrib-python>=4.1.0.25'],  # Optional
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"
@@ -89,26 +97,26 @@ setup(
     #
     # Similar to `install_requires` above, these must be valid existing
     # projects.
-    extras_require={  # Optional
-        'dev': ['check-manifest'],
-        'test': ['coverage'],
-    },
+    #extras_require={  # Optional
+    #    'dev': ['check-manifest'],
+    #    'test': ['coverage'],
+    #},
 
     # If there are data files included in your packages that need to be
     # installed, specify them here.
     #
     # If using Python 2.6 or earlier, then these have to be included in
     # MANIFEST.in as well.
-    package_data={  # Optional
-        'sample': ['package_data.dat'],
-    },
+    #package_data={  # Optional
+    #    'sample': ['package_data.dat'],
+    #},
 
     # Although 'package_data' is the preferred approach, in some case you may
     # need to place data files outside of your packages. See:
     # http://docs.python.org/3.4/distutils/setupscript.html#installing-additional-files
     #
     # In this case, 'data_file' will be installed into '<sys.prefix>/my_data'
-    data_files=[('my_data', ['data/data_file'])],  # Optional
+    #data_files=[('my_data', ['data/data_file'])],  # Optional
 
     # To provide executable scripts, use entry points in preference to the
     # "scripts" keyword. Entry points provide cross-platform support and allow
@@ -117,11 +125,11 @@ setup(
     #
     # For example, the following would provide a command called `sample` which
     # executes the function `main` from this package when invoked:
-    entry_points={  # Optional
-        'console_scripts': [
-            'sample=sample:main',
-        ],
-    },
+    #entry_points={  # Optional
+    #    'console_scripts': [
+    #        'sample=sample:main',
+    #    ],
+    #},
 
     # List additional URLs that are relevant to your project as a dict.
     #
@@ -133,9 +141,7 @@ setup(
     # maintainers, and where to support the project financially. The key is
     # what's used to render the link text on PyPI.
     project_urls={  # Optional
-        'Bug Reports': 'https://github.com/pypa/sampleproject/issues',
-        'Funding': 'https://donate.pypi.org',
-        'Say Thanks!': 'http://saythanks.io/to/example',
-        'Source': 'https://github.com/pypa/sampleproject/',
+        'Bug Reports': 'https://github.com/tonandr/keras_unsupervised/issues',
+        'Source': 'https://github.com/tonandr/keras_unsupervised/',
     },
 )
