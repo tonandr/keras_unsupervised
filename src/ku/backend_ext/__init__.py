@@ -1,1 +1,0 @@
-from .tensorflow_backend import multivariate_normal_diag

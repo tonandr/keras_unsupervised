@@ -27,7 +27,7 @@ import h5py
 import cv2 as cv
 
 from keras.models import Model, load_model
-from keras.layers import Input, Dense, Lambda, Embedding, Flatten, multiply, LeakyReLU, Conv2D, Conv2DTranspose, DepthwiseConv2D
+from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, LeakyReLU, Conv2D, Conv2DTranspose, DepthwiseConv2D
 from keras.activations import sigmoid
 from keras.utils import multi_gpu_model
 from keras import optimizers
@@ -197,7 +197,11 @@ class StyleGAN(AbstractGAN):
         conf: dict
             Configuration.
         """
-        super().__init__(conf)
+        self.conf = conf #?
+        self.raw_data_path = self.conf['raw_data_path']
+        self.hps = self.conf['hps']
+        self.nn_arch = self.conf['nn_arch']
+        
         self.map_hps = conf['map_hps']
         self.map_nn_arch = conf['map_nn_arch']
         self.syn_hps = conf['syn_hps']
@@ -211,7 +215,13 @@ class StyleGAN(AbstractGAN):
             self._create_generator_2()
             self._create_discriminator()
             self.compile()
+            
+        self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
+                               , 'TruncationTrick': TruncationTrick
+                               , 'StyleMixingRegularization': StyleMixingRegularization}
         
+        super(StyleGAN, self).__init__(conf) #?
+                
     def _cal_num_chs(self, layer_idx):
         """Calculate the number of channels for each synthesis layer.
         
@@ -492,7 +502,8 @@ class StyleGAN(AbstractGAN):
                               , self.map_nn_arch['latent_dim'])(labels))
         
             # L2 normalization.
-            x = Lambda(lambda x: K.l2_normalize(multiply([x[0], x[1]]), axis=-1))([x, l])
+            x = Multiply()([x, l])
+            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))([x])
         
         # Mapping layers.
         for layer_idx in range(self.map_nn_arch['num_layers'] - 1):
@@ -1032,7 +1043,7 @@ class StyleGAN(AbstractGAN):
                 pass
 
         # Save models.
-        with CustomObjectScope({'AdaptiveINWithStyle': AdaptiveINWithStyle}):
+        with CustomObjectScope(self.custom_objects):
             self.disc_ext.save(self.DISC_EXT_PATH)
             self.gan.save(self.GAN_PATH)
 

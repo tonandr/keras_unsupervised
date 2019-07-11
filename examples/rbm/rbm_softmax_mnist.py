@@ -22,7 +22,8 @@ import pandas as pd
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Lambda
 from keras.utils import multi_gpu_model
-from keras import optimizers
+from keras import optimizersq
+
 
 from ku.ebm.rbm import RBM 
 

@@ -31,7 +31,7 @@ setup(
         # Indicate who your project is intended for
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
-        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Software Development :: Libraries'
 
         # Pick your license as you wish
         'License :: OSI Approved :: BSD License',
