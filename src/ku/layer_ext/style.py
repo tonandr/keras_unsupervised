@@ -2,7 +2,6 @@
 Created on 2019. 6. 27.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
-License: BSD 3 clause.
 """
 
 from __future__ import absolute_import
@@ -59,7 +58,7 @@ class StyleMixingRegularization(_Merge):
 
     def get_config(self):
         config = {'mixing_prob': self.mixing_prob}
-        base_config = super(TruncationTrick, self).get_config()
+        base_config = super(StyleMixingRegularization, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
    
 class TruncationTrick(Layer):
@@ -78,11 +77,11 @@ class TruncationTrick(Layer):
         self.moving_mean_initializer = initializers.get(moving_mean_initializer)
 
     def build(self, input_shape):
+        super(TruncationTrick, self).build(input_shape)
         self.moving_mean = self.add_weight(shape=(input_shape[-1],) # Last channel?
                                            , name='moving_mean'
                                            , initializer=self.moving_mean_initializer
                                            , trainable=True) #?
-        self.built = True
 
     def call(self, x):
         # Update moving average.

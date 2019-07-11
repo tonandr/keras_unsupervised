@@ -29,6 +29,7 @@ from _collections_abc import generator, Generator
 
 EPSILON = 1e-8
 
+'''
 def gan_loss(y_true, y_pred):
     return 1.0 * K.log(1.0 - y_pred + EPSILON) #?
 
@@ -37,6 +38,16 @@ def disc_ext_loss(y_true, y_pred):
 
 def disc_ext_loss2(y_true, y_pred):
     return 1.0 * K.log(1.0 - y_pred + EPSILON) #?
+'''
+
+def gan_loss(y_true, y_pred):
+    return K.mean(K.sqrt(K.pow(y_true - y_pred, 2.0))) #?
+
+def disc_ext_loss(y_true, y_pred):
+    return K.mean(K.sqrt(K.pow(y_true - y_pred, 2.0))) #?
+
+def disc_ext_loss2(y_true, y_pred):
+    return K.mean(K.sqrt(K.pow(y_true - y_pred, 2.0))) #?
 
 class AbstractGAN(ABC):
     """Abstract generative adversarial network."""
@@ -133,7 +144,7 @@ class AbstractGAN(ABC):
         disc_ext_losses2 = [disc_ext_loss2 for _ in range(len(x2_outputs))] #?        
         self.disc_ext.compile(optimizer=opt
                          , loss=disc_ext_losses1 + disc_ext_losses2 
-                         , loss_weights=[-1.0 for _ in range(len(x_outputs) + len(x2_outputs))])
+                         , loss_weights=[1.0 for _ in range(len(x_outputs) + len(x2_outputs))])
         
         if self.conf['multi_gpu']:
             self.disc_ext_p = multi_gpu_model(self.gan, gpus=self.conf['num_gpus'])

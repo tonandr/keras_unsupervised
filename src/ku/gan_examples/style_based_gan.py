@@ -375,7 +375,7 @@ class StyleGAN(AbstractGAN):
                         , kernel_size=1
                         , strides=1
                         , padding='same')(x)
-        
+
         if self.nn_arch['label_usage']:
             self.gen = Model(inputs=inputs1 + [inputs2[0]] + internal_inputs, outputs=[output1, output2], name='gen') #?
         else:
@@ -504,7 +504,8 @@ class StyleGAN(AbstractGAN):
                 
         output_dim = self.map_nn_arch['dlatent_dim']
         x = LeakyReLU(name='map_output')(Dense(output_dim)(x))
-        output = Lambda(lambda x: K.repeat(x, self.syn_nn_arch['num_layers']))(x)
+        num_layers = self.syn_nn_arch['num_layers']
+        output = Lambda(lambda x: K.repeat(x, num_layers))(x)
          
         self.map = Model(inputs=[noises, labels] if self.nn_arch['label_usage'] else [noises]
                                     , outputs=[output], name='map')
@@ -556,13 +557,22 @@ class StyleGAN(AbstractGAN):
         x = Dense(1)(x)
         
         # Last layer.
+        '''
+        if self.nn_arch['label_usage']:
+            output = Lambda(lambda x: K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True))([x, labels]) #?
+            self.disc = Model(inputs=[images, labels], outputs=[output], name='disc')
+        else:
+            output = Lambda(lambda x: K.sum(x[0], axis=1, keepdims=True))(x)
+            self.disc = Model(inputs=[images], outputs=[output], name='disc')        
+        '''
+        
         if self.nn_arch['label_usage']:
             output = Lambda(lambda x: sigmoid(K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True)))([x, labels]) #?
             self.disc = Model(inputs=[images, labels], outputs=[output], name='disc')
         else:
             output = Lambda(lambda x: sigmoid(K.sum(x[0], axis=1, keepdims=True)))(x)
             self.disc = Model(inputs=[images], outputs=[output], name='disc')
-            
+         
     def train(self):
         """Train."""
         
@@ -956,7 +966,7 @@ class StyleGAN(AbstractGAN):
                             z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])]
                             
                         x_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
-                        z_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+                        z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
              
                         # Train disc.
                         if self.conf['multi_gpu']:
@@ -1022,24 +1032,22 @@ class StyleGAN(AbstractGAN):
                 pass
 
         # Save models.
-        '''
         with CustomObjectScope({'AdaptiveINWithStyle': AdaptiveINWithStyle}):
             self.disc_ext.save(self.DISC_EXT_PATH)
             self.gan.save(self.GAN_PATH)
-        '''
 
         if self.conf['multi_gpu']:
             return self.disc_ext_p.history, self.gan_p.history
         else:
             return self.disc_ext.history, self.gan.history
 
-    def generate(self, images, labels, *args, **kwargs):
+    def generate(self, latents, labels, *args, **kwargs):
         """Generate styled images.
         
         Parameters
         ----------
-        images: 4d numpy array
-            Images.
+        latents: 2d numpy array
+            latents.
         labels: 2d numpy array
             Labels.
         """ 
@@ -1047,14 +1055,14 @@ class StyleGAN(AbstractGAN):
         
         if self.conf['multi_gpu']:
             if self.nn_arch['label_usage']:
-                s_images = self.gen_p.predict([images, labels])
+                s_images = self.gen_p.predict([latents, labels])
             else:
-                s_images = self.gen_p.predict([images])
+                s_images = self.gen_p.predict([latents])
         else:
             if self.nn_arch['label_usage']:
-                s_images = self.gen.predict([images, labels])
+                s_images = self.gen.predict([latents, labels])
             else:
-                s_images = self.gen.predict([images])
+                s_images = self.gen.predict([latents])
         
         return s_images
                 

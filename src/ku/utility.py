@@ -2,9 +2,6 @@
 Created on 2019. 6. 12.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
-License: BSD 3 clause.
-
-Revision:
 """
 
 from keras.models import Model

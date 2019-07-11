@@ -2,7 +2,6 @@
 Created on 2019. 6. 21.
 
 @author: Inwoo Chung (gutomitai@gmail.com)
-License: BSD 3 clause.
 
 Revision
     -Jun. 24, 2019
