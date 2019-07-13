@@ -5,3 +5,8 @@ Energy based model
 
 	.. autoclass:: RBM
 		:members:
+
+.. automodule:: dbn
+
+	.. autoclass:: DBN
+		:members:

@@ -15,7 +15,7 @@ from keras.layers import Input, Dense
 from keras.engine.input_layer import InputLayer
 from keras import optimizers
 
-from ..utility import reverse_undirected_model
+from ku.utility import reverse_undirected_model
 
 def make_ae_from_ugm(model, hps):
     """Make autoencoder from undirected graphical model.?

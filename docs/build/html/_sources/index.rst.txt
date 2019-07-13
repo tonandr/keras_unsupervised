@@ -7,15 +7,12 @@ Welcome to Keras Unsupervised documentation!
 ============================================
 
 .. toctree::
-   :maxdepth: 7
+   :maxdepth: 4
    
    intro
    install_guide
-   ebm
-   backprop
-   layer_ext
-   backend_ext
-   utility
+   user_guide
+   ku
    
 Indices and tables
 ==================

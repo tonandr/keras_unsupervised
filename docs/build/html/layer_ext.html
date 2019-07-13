@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Layer extension &mdash; Keras Unsupervised 0.9 documentation</title>
+  <title>Layer extension &mdash; Keras Unsupervised alpha documentation</title>
   
 
   
@@ -58,6 +58,10 @@
 
           
             
+            
+              <div class="version">
+                0.1
+              </div>
             
           
 
@@ -245,6 +249,116 @@ instead of an integer.</p>
 <dt id="normalization_ext.AdaptiveINWithStyle.get_config">
 <code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#normalization_ext.AdaptiveINWithStyle.get_config" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get configuration.</p>
+</dd></dl>
+
+</dd></dl>
+
+<span class="target" id="module-style"></span><p>Created on 2019. 6. 27.</p>
+<p>&#64;author: Inwoo Chung (<a class="reference external" href="mailto:gutomitai&#37;&#52;&#48;gmail&#46;com">gutomitai<span>&#64;</span>gmail<span>&#46;</span>com</a>)</p>
+<dl class="class">
+<dt id="style.StyleMixingRegularization">
+<em class="property">class </em><code class="sig-prename descclassname">style.</code><code class="sig-name descname">StyleMixingRegularization</code><span class="sig-paren">(</span><em class="sig-param">mixing_prob=None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#style.StyleMixingRegularization" title="Permalink to this definition">¶</a></dt>
+<dd><p>Style mixing regularization layer.</p>
+<dl class="method">
+<dt id="style.StyleMixingRegularization.build">
+<code class="sig-name descname">build</code><span class="sig-paren">(</span><em class="sig-param">input_shape</em><span class="sig-paren">)</span><a class="headerlink" href="#style.StyleMixingRegularization.build" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates the layer weights.</p>
+<p>Must be implemented on all layers that have weights.</p>
+<dl class="simple">
+<dt># Arguments</dt><dd><dl class="simple">
+<dt>input_shape: Keras tensor (future input to layer)</dt><dd><p>or list/tuple of Keras tensors to reference
+for weight shape computations.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="style.StyleMixingRegularization.get_config">
+<code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#style.StyleMixingRegularization.get_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the config of the layer.</p>
+<p>A layer config is a Python dictionary (serializable)
+containing the configuration of a layer.
+The same layer can be reinstantiated later
+(without its trained weights) from this configuration.</p>
+<p>The config of a layer does not include connectivity
+information, nor the layer class name. These are handled
+by <cite>Network</cite> (one layer of abstraction above).</p>
+<dl class="simple">
+<dt># Returns</dt><dd><p>Python dictionary.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="style.TruncationTrick">
+<em class="property">class </em><code class="sig-prename descclassname">style.</code><code class="sig-name descname">TruncationTrick</code><span class="sig-paren">(</span><em class="sig-param">psi=0.0</em>, <em class="sig-param">cutoff=None</em>, <em class="sig-param">momentum=0.99</em>, <em class="sig-param">moving_mean_initializer='zeros'</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#style.TruncationTrick" title="Permalink to this definition">¶</a></dt>
+<dd><p>Truncation trick layer.</p>
+<dl class="method">
+<dt id="style.TruncationTrick.build">
+<code class="sig-name descname">build</code><span class="sig-paren">(</span><em class="sig-param">input_shape</em><span class="sig-paren">)</span><a class="headerlink" href="#style.TruncationTrick.build" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates the layer weights.</p>
+<p>Must be implemented on all layers that have weights.</p>
+<dl class="simple">
+<dt># Arguments</dt><dd><dl class="simple">
+<dt>input_shape: Keras tensor (future input to layer)</dt><dd><p>or list/tuple of Keras tensors to reference
+for weight shape computations.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="style.TruncationTrick.call">
+<code class="sig-name descname">call</code><span class="sig-paren">(</span><em class="sig-param">x</em><span class="sig-paren">)</span><a class="headerlink" href="#style.TruncationTrick.call" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is where the layer’s logic lives.</p>
+<dl class="simple">
+<dt># Arguments</dt><dd><p>inputs: Input tensor, or list/tuple of input tensors.
+<a href="#id3"><span class="problematic" id="id4">**</span></a>kwargs: Additional keyword arguments.</p>
+</dd>
+<dt># Returns</dt><dd><p>A tensor or list/tuple of tensors.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="style.TruncationTrick.compute_output_shape">
+<code class="sig-name descname">compute_output_shape</code><span class="sig-paren">(</span><em class="sig-param">input_shape</em><span class="sig-paren">)</span><a class="headerlink" href="#style.TruncationTrick.compute_output_shape" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the output shape of the layer.</p>
+<p>Assumes that the layer will be built
+to match that input shape provided.</p>
+<dl class="simple">
+<dt># Arguments</dt><dd><dl class="simple">
+<dt>input_shape: Shape tuple (tuple of integers)</dt><dd><p>or list of shape tuples (one per output tensor of the layer).
+Shape tuples can include None for free dimensions,
+instead of an integer.</p>
+</dd>
+</dl>
+</dd>
+<dt># Returns</dt><dd><p>An input shape tuple.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="style.TruncationTrick.get_config">
+<code class="sig-name descname">get_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#style.TruncationTrick.get_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the config of the layer.</p>
+<p>A layer config is a Python dictionary (serializable)
+containing the configuration of a layer.
+The same layer can be reinstantiated later
+(without its trained weights) from this configuration.</p>
+<p>The config of a layer does not include connectivity
+information, nor the layer class name. These are handled
+by <cite>Network</cite> (one layer of abstraction above).</p>
+<dl class="simple">
+<dt># Returns</dt><dd><p>Python dictionary.</p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>

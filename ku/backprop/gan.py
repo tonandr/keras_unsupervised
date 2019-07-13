@@ -9,24 +9,12 @@ from __future__ import division
 from __future__ import print_function
 
 from abc import ABC, abstractmethod
-import warnings
-
-import numpy as np
-import pandas as pd
 
 from keras.models import Model, load_model
-from keras.layers import Input, Dense, Lambda
 from keras.utils import multi_gpu_model
 from keras import optimizers
-from keras.models import Sequential
 import keras.backend as K
-from keras.engine.input_layer import InputLayer
-from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
-from keras.engine.training_utils import iter_sequence_infinite
-from keras.utils import plot_model
 from keras.utils.generic_utils import CustomObjectScope
-
-from _collections_abc import generator, Generator
 
 EPSILON = 1e-8
 
@@ -42,13 +30,13 @@ def disc_ext_loss2(y_true, y_pred):
 '''
 
 def gan_loss(y_true, y_pred):
-    return K.mean(K.sqrt(K.pow(y_true - y_pred, 2.0))) #?
+    return K.mean(K.square(y_true - y_pred), axis=-1) #?
 
 def disc_ext_loss(y_true, y_pred):
-    return K.mean(K.sqrt(K.pow(y_true - y_pred, 2.0))) #?
+    return K.mean(K.square(y_true - y_pred), axis=-1) #?
 
 def disc_ext_loss2(y_true, y_pred):
-    return K.mean(K.sqrt(K.pow(y_true - y_pred, 2.0))) #?
+    return K.mean(K.square(y_true - y_pred), axis=-1) #?
 
 class AbstractGAN(ABC):
     """Abstract generative adversarial network."""
@@ -60,6 +48,8 @@ class AbstractGAN(ABC):
         conf: dict
             Configuration.
         """
+        self.conf = conf #?
+        
         if self.conf['model_loading']:
             if not hasattr(self, 'custom_objects'):
                 ValueError('Before models, custom_objects must be created.')
@@ -87,7 +77,7 @@ class AbstractGAN(ABC):
                     
                     # gen.
                     self.gen = self.gan.get_layer('gen')
-                    self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])                                
+                    self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])                                                  
                 else:
                     # gan.
                     self.gan = load_model(self.GAN_PATH, custom_objects={'gan_loss': gan_loss
@@ -99,6 +89,9 @@ class AbstractGAN(ABC):
                                                                            , 'disc_ext_loss2': disc_ext_loss2})
                     # gen.
                     self.gen = self.gan.get_layer('gen')
+                
+                # disc.
+                self.disc = self.gan.get_layer('disc')
                     
     @abstractmethod
     def _create_generator(self):

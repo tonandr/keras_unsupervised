@@ -9,41 +9,28 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import glob
-import argparse
 import time
-import pickle
 import platform
-import shutil
-from random import shuffle
 import json
 import warnings
 
 import numpy as np
 import pandas as pd
 from skimage.io import imread, imsave
-from scipy.linalg import norm
-import h5py
 import cv2 as cv
 
-from keras.models import Model, load_model
-from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, LeakyReLU, Conv2D, Conv2DTranspose, DepthwiseConv2D
-from keras.activations import sigmoid
-from keras.utils import multi_gpu_model
-from keras import optimizers
+from keras.models import Model
+from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, multiply
+from keras.layers import LeakyReLU, Conv2D, Conv2DTranspose, DepthwiseConv2D, Activation
 import keras.backend as K 
-from keras.engine.input_layer import InputLayer
 from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from keras.engine.training_utils import iter_sequence_infinite
-from keras.utils import Sequence, plot_model
-from keras.utils import Progbar
+from keras.utils import plot_model
+from keras.utils.generic_utils import to_list, CustomObjectScope
 from keras import callbacks as cbks
 
 from ku.backprop import AbstractGAN
-from ku.layer_ext import AdaptiveIN
-from ku.layer_ext.style import TruncationTrick, StyleMixingRegularization
-from ku.layer_ext.normalization_ext import AdaptiveINWithStyle
-from keras.utils.generic_utils import to_list, CustomObjectScope
+from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -503,7 +490,7 @@ class StyleGAN(AbstractGAN):
         
             # L2 normalization.
             x = Multiply()([x, l])
-            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))([x])
+            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x)
         
         # Mapping layers.
         for layer_idx in range(self.map_nn_arch['num_layers'] - 1):
@@ -567,21 +554,14 @@ class StyleGAN(AbstractGAN):
         x = LeakyReLU()(x)
         x = Dense(1)(x)
         
-        # Last layer.
-        '''
+        # Last layer.        
         if self.nn_arch['label_usage']:
-            output = Lambda(lambda x: K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True))([x, labels]) #?
+            x = Lambda(lambda x: K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True))([x, labels]) #?
+            output = Activation('linear')(x)
             self.disc = Model(inputs=[images, labels], outputs=[output], name='disc')
         else:
-            output = Lambda(lambda x: K.sum(x[0], axis=1, keepdims=True))(x)
-            self.disc = Model(inputs=[images], outputs=[output], name='disc')        
-        '''
-        
-        if self.nn_arch['label_usage']:
-            output = Lambda(lambda x: sigmoid(K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True)))([x, labels]) #?
-            self.disc = Model(inputs=[images, labels], outputs=[output], name='disc')
-        else:
-            output = Lambda(lambda x: sigmoid(K.sum(x[0], axis=1, keepdims=True)))(x)
+            x = Lambda(lambda x: K.sum(x[0], axis=1, keepdims=True))(x)
+            output = Activation('linear')(x)
             self.disc = Model(inputs=[images], outputs=[output], name='disc')
          
     def train(self):
@@ -987,6 +967,8 @@ class StyleGAN(AbstractGAN):
                             outs = self.disc_ext.train_on_batch(x_inputs1_b +  x_inputs2_b + z_inputs_b
                                      , x_outputs_b + z_outputs_b) #?
 
+                        #print(s_i, self.map.get_weights()[0])
+
                         outs = to_list(outs)
                         
                         if self.conf['multi_gpu']:
@@ -999,6 +981,13 @@ class StyleGAN(AbstractGAN):
                         for l, o in zip(metric_names, outs):
                             k_batch_logs[l] = o                        
             
+                        ws = self.map.get_weights()
+                        res = []
+                        for w in ws:
+                            res.append(np.isfinite(w).all())
+                        res = np.asarray(res)
+
+                        #print('\n', k_batch_logs)
                         callbacks_disc_ext.on_batch_end(self.hps['batch_step'] * s_i + k_i, k_batch_logs)
                         
                     # Build batch logs.
@@ -1028,6 +1017,7 @@ class StyleGAN(AbstractGAN):
                         for l, o in zip(self.gan.metrics_names, outs):
                             batch_logs[l] = o
         
+                    #print('\n', batch_logs)
                     callbacks_gan.on_batch_end(s_i, batch_logs)
                     
                 callbacks_disc_ext.on_epoch_end(e_i, epochs_log)

@@ -14,7 +14,7 @@ from keras import backend as K
 from keras.layers import Layer
 from keras import initializers
 
-from ..backend_ext import tensorflow_backend as Ke
+from ku.backend_ext import tensorflow_backend as Ke
 
 # Constants.
 MODE_VISIBLE_BERNOULLI = 0

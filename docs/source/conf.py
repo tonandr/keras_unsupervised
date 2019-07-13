@@ -16,8 +16,10 @@ import os
 import sys
 sys.path.append('D:\\topcoder\\keras_unsupervised\\ku\\backend_ext')
 sys.path.append('D:\\topcoder\\keras_unsupervised\\ku\\ebm')
+sys.path.append('D:\\topcoder\\keras_unsupervised')
 sys.path.append('D:\\topcoder\\keras_unsupervised\\ku')
 sys.path.append('D:\\topcoder\\keras_unsupervised\\ku\\layer_ext')
+sys.path.append('D:\\topcoder\\keras_unsupervised\\ku\\backprop')
 
 
 # -- Project information -----------------------------------------------------
@@ -27,9 +29,9 @@ copyright = '2019, Inwoo Chung'
 author = 'Inwoo Chung'
 
 # The short X.Y version
-version = ''
+version = '0.1'
 # The full version, including alpha/beta/rc tags
-release = '0.9'
+release = 'alpha'
 
 
 # -- General configuration ---------------------------------------------------
@@ -43,7 +45,7 @@ release = '0.9'
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.githubpages',
+    'sphinx.ext.napoleon'
 ]
 
 # Add any paths that contain templates here, relative to this directory.

@@ -15,7 +15,7 @@ from keras.layers.merge import _Merge
 from keras.layers import Layer, InputSpec
 import keras.initializers as initializers
 
-from ..backend_ext import tensorflow_backend as Ke
+from ku.backend_ext import tensorflow_backend as Ke
 
 class StyleMixingRegularization(_Merge):
     """Style mixing regularization layer."""

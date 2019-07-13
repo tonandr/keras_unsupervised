@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Backpropagation based model &mdash; Keras Unsupervised 0.9 documentation</title>
+  <title>Backpropagation based model &mdash; Keras Unsupervised alpha documentation</title>
   
 
   
@@ -59,6 +59,10 @@
           
             
             
+              <div class="version">
+                0.1
+              </div>
+            
           
 
           
@@ -88,6 +92,7 @@
 <li class="toctree-l1"><a class="reference internal" href="layer_ext.html">Layer extension</a></li>
 <li class="toctree-l1"><a class="reference internal" href="backend_ext.html">Backend extension</a></li>
 <li class="toctree-l1"><a class="reference internal" href="utility.html">Utility</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ku.html">ku package</a></li>
 </ul>
 
             
@@ -152,8 +157,96 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <div class="section" id="backpropagation-based-model">
-<h1>Backpropagation based model<a class="headerlink" href="#backpropagation-based-model" title="Permalink to this headline">¶</a></h1>
+  <div class="section" id="module-autoencoder">
+<span id="backpropagation-based-model"></span><h1>Backpropagation based model<a class="headerlink" href="#module-autoencoder" title="Permalink to this headline">¶</a></h1>
+<p>Created on 2019. 6. 17.</p>
+<p>&#64;author: Inwoo Chung (<a class="reference external" href="mailto:gutomitai&#37;&#52;&#48;gmail&#46;com">gutomitai<span>&#64;</span>gmail<span>&#46;</span>com</a>)</p>
+<dl class="function">
+<dt id="autoencoder.make_ae_from_ugm">
+<code class="sig-prename descclassname">autoencoder.</code><code class="sig-name descname">make_ae_from_ugm</code><span class="sig-paren">(</span><em class="sig-param">model</em>, <em class="sig-param">hps</em><span class="sig-paren">)</span><a class="headerlink" href="#autoencoder.make_ae_from_ugm" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make autoencoder from undirected graphical model.?</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Keras model</em>) – Undirected graphical model.</p></li>
+<li><p><strong>hps</strong> (<em>dict</em>) – Hyper-parameters.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Keras model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>Autoencoder model</p>
+</dd>
+</dl>
+</dd></dl>
+
+<span class="target" id="module-gan"></span><p>Created on 2019. 6. 17.</p>
+<p>&#64;author: Inwoo Chung (<a class="reference external" href="mailto:gutomitai&#37;&#52;&#48;gmail&#46;com">gutomitai<span>&#64;</span>gmail<span>&#46;</span>com</a>)</p>
+<dl class="class">
+<dt id="gan.AbstractGAN">
+<em class="property">class </em><code class="sig-prename descclassname">gan.</code><code class="sig-name descname">AbstractGAN</code><span class="sig-paren">(</span><em class="sig-param">conf</em><span class="sig-paren">)</span><a class="headerlink" href="#gan.AbstractGAN" title="Permalink to this definition">¶</a></dt>
+<dd><p>Abstract generative adversarial network.</p>
+<dl class="method">
+<dt id="gan.AbstractGAN.compile">
+<code class="sig-name descname">compile</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#gan.AbstractGAN.compile" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create the GAN model and compile it.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="gan.AbstractGAN.fit">
+<em class="property">abstract </em><code class="sig-name descname">fit</code><span class="sig-paren">(</span><em class="sig-param">x_inputs</em>, <em class="sig-param">x_outputs</em><span class="sig-paren">)</span><a class="headerlink" href="#gan.AbstractGAN.fit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Train the GAN model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x_inputs</strong> (<em>list.</em>) – Training data numpy array list.</p></li>
+<li><p><strong>x_outputs</strong> (<em>list.</em>) – Ground truth data numpy array list.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="gan.AbstractGAN.fit_generator">
+<em class="property">abstract </em><code class="sig-name descname">fit_generator</code><span class="sig-paren">(</span><em class="sig-param">generator</em>, <em class="sig-param">max_queue_size=10</em>, <em class="sig-param">workers=1</em>, <em class="sig-param">use_multiprocessing=False</em>, <em class="sig-param">shuffle=True</em><span class="sig-paren">)</span><a class="headerlink" href="#gan.AbstractGAN.fit_generator" title="Permalink to this definition">¶</a></dt>
+<dd><p>Train the GAN model with the generator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>generator</strong> (<em>Generator</em>) – Training data generator.</p></li>
+<li><p><strong>max_queue_size</strong> (<em>Integer</em>) – Maximum size for the generator queue (default: 10).</p></li>
+<li><p><strong>workers</strong> (<em>Integer</em>) – Maximum number of processes to get samples (default: 1, 0: main thread).</p></li>
+<li><p><strong>use_multiprocessing</strong> (<em>Boolean</em>) – Multi-processing flag (default: False).</p></li>
+<li><p><strong>shuffle</strong> (<em>Boolean</em>) – Batch shuffling flag (default: True).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="gan.AbstractGAN.generate">
+<em class="property">abstract </em><code class="sig-name descname">generate</code><span class="sig-paren">(</span><em class="sig-param">*args</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#gan.AbstractGAN.generate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate styled images.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="gan.gan_loss">
+<code class="sig-prename descclassname">gan.</code><code class="sig-name descname">gan_loss</code><span class="sig-paren">(</span><em class="sig-param">y_true</em>, <em class="sig-param">y_pred</em><span class="sig-paren">)</span><a class="headerlink" href="#gan.gan_loss" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="gan.disc_ext_loss">
+<code class="sig-prename descclassname">gan.</code><code class="sig-name descname">disc_ext_loss</code><span class="sig-paren">(</span><em class="sig-param">y_true</em>, <em class="sig-param">y_pred</em><span class="sig-paren">)</span><a class="headerlink" href="#gan.disc_ext_loss" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="gan.disc_ext_loss2">
+<code class="sig-prename descclassname">gan.</code><code class="sig-name descname">disc_ext_loss2</code><span class="sig-paren">(</span><em class="sig-param">y_true</em>, <em class="sig-param">y_pred</em><span class="sig-paren">)</span><a class="headerlink" href="#gan.disc_ext_loss2" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
 </div>
 
 
