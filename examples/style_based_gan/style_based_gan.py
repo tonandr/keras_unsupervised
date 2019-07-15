@@ -27,10 +27,11 @@ from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from keras.engine.training_utils import iter_sequence_infinite
 from keras.utils import plot_model
 from keras.utils.generic_utils import to_list, CustomObjectScope
-from keras import callbacks as cbks
+from keras import callbacks as cbks, initializers
 
 from ku.backprop import AbstractGAN
-from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization
+from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization, InputVariable
+from numpy.linalg.linalg import norm
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -205,7 +206,8 @@ class StyleGAN(AbstractGAN):
             
         self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
                                , 'TruncationTrick': TruncationTrick
-                               , 'StyleMixingRegularization': StyleMixingRegularization}
+                               , 'StyleMixingRegularization': StyleMixingRegularization
+                               , 'InputVariable': InputVariable}
         
         super(StyleGAN, self).__init__(conf) #?
                 
@@ -242,9 +244,9 @@ class StyleGAN(AbstractGAN):
     
         # Style mixing regularization.
         if self.nn_arch['label_usage']:
-            inputs2 = [Input(tensor=K.random_normal(K.shape(inputs1[0]))), inputs1[1]] #?
+            inputs2 = [Input(shape=K.int_shape(inputs1[0])[1:]), inputs1[1]] # Normal random input.
         else:
-            inputs2 = Input(tensor=K.random_normal(K.shape(inputs1[0])))
+            inputs2 = Input(shape=K.int_shape(inputs1[0])[1:]) # Normal random input.
         
         dlatents2 = self.map(inputs2)
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
@@ -279,9 +281,9 @@ class StyleGAN(AbstractGAN):
     
         # Style mixing regularization.
         if self.nn_arch['label_usage']:
-            inputs2 = [Input(tensor=K.random_normal(K.shape(inputs1[0]))), inputs1[1]] #?
+            inputs2 = [Input(shape=K.int_shape(inputs1[0])[1:]), inputs1[1]] # Normal random input.
         else:
-            inputs2 = Input(tensor=K.random_normal(K.shape(inputs1[0])))
+            inputs2 = Input(shape=K.int_shape(inputs1[0])[1:]) # Normal random input.
         
         dlatents2 = self.map(inputs2)
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
@@ -300,25 +302,40 @@ class StyleGAN(AbstractGAN):
         # The first constant input layer.
         res = 2
         layer_idx = 0
-        x = K.constant(1.0, shape=tuple([1, 4, 4, self._cal_num_chs(res - 1)]))
-        n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
-        w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
         
+        # Inputs.
+        x = Input(shape=(1,))
+        n = Input(shape=tuple([4, 4, self._cal_num_chs(res - 1)])) # Random noise input.
+        w = Input(shape=(1,))
+        internal_inputs.append(x)
+        internal_inputs.append(n)
+        internal_inputs.append(w)
+        
+        # Input variables.
+        x = InputVariable(shape=tuple([4, 4, self._cal_num_chs(res - 1)]))(x)        
+        w = InputVariable(shape=(K.int_shape(x)[-1], )
+                          , variable_initializer=initializers.Ones())(w)
+               
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
         x = LeakyReLU()(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-        x = Input(tensor=Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x)) #?
-        internal_inputs.append(x)
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
         x = AdaptiveINWithStyle()([x, dlatents_p]) #?
         
         layer_idx +=1
         x = Conv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
-        n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
-        w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
-        internal_inputs.append(n)    
-        internal_inputs.append(w) 
+        
+        # Inputs.
+        n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
+        w = Input(shape=(1,))
+
+        internal_inputs.append(n)
+        internal_inputs.append(w)
+        
+        # Input variables.
+        w = InputVariable(shape=(K.int_shape(x)[-1], )
+                          , variable_initializer=initializers.Ones())(w)
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
         x = LeakyReLU()(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization. 
@@ -335,10 +352,16 @@ class StyleGAN(AbstractGAN):
                                 , strides=2
                                 , padding='same')(x) # Blur?
                                 
-            n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
-            w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
-            internal_inputs.append(n)    
-            internal_inputs.append(w) 
+            # Inputs.
+            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
+            w = Input(shape=(1,))
+    
+            internal_inputs.append(n)
+            internal_inputs.append(w)
+            
+            # Input variables.
+            w = InputVariable(shape=(K.int_shape(x)[-1], )
+                              , variable_initializer=initializers.Ones())(w)
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
@@ -353,10 +376,16 @@ class StyleGAN(AbstractGAN):
                        , strides=1
                        , padding='same')(x)
         
-            n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
-            w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
-            internal_inputs.append(n)    
-            internal_inputs.append(w) 
+            # Inputs.
+            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
+            w = Input(shape=(1,))
+    
+            internal_inputs.append(n)
+            internal_inputs.append(w)
+            
+            # Input variables.
+            w = InputVariable(shape=(K.int_shape(x)[-1], )
+                              , variable_initializer=initializers.Ones())(w) 
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
@@ -371,6 +400,7 @@ class StyleGAN(AbstractGAN):
         output1 = Conv2D(filters=3
                         , kernel_size=1
                         , strides=1
+                        , activation='tanh'
                         , padding='same')(x)
 
         if self.nn_arch['label_usage']:
@@ -394,25 +424,40 @@ class StyleGAN(AbstractGAN):
         # The first constant input layer.
         res = 2
         layer_idx = 0
-        x = K.constant(1.0, shape=tuple([1, 4, 4, self._cal_num_chs(res - 1)]))
-        n = K.random_normal_variable(K.int_shape(x), 0, 1) #?
-        w = K.variable(np.random.RandomState().randn(K.int_shape(x)[-1]))
         
+        # Inputs.
+        x = Input(shape=(1,))
+        n = Input(shape=tuple([4, 4, self._cal_num_chs(res - 1)])) # Random noise input.
+        w = Input(shape=(1,))
+        internal_inputs.append(x)
+        internal_inputs.append(n)
+        internal_inputs.append(w)
+        
+        # Input variables.
+        x = InputVariable(shape=tuple([4, 4, self._cal_num_chs(res - 1)]))(x)        
+        w = InputVariable(shape=(K.int_shape(x)[-1], )
+                          , variable_initializer=initializers.Ones())(w)
+               
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
         x = LeakyReLU()(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-        x = Input(tensor=Lambda(lambda x: K.tile(x, (K.shape(dlatents)[0], 1, 1, 1)))(x)) #?
-        internal_inputs.append(x)
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
         x = AdaptiveINWithStyle()([x, dlatents_p]) #?
         
         layer_idx +=1
         x = Conv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
-        n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
-        w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
-        internal_inputs.append(n)    
-        internal_inputs.append(w) 
+        
+        # Inputs.
+        n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
+        w = Input(shape=(1,))
+
+        internal_inputs.append(n)
+        internal_inputs.append(w)
+        
+        # Input variables.
+        w = InputVariable(shape=(K.int_shape(x)[-1], )
+                          , variable_initializer=initializers.Ones())(w)
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
         x = LeakyReLU()(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization. 
@@ -429,10 +474,16 @@ class StyleGAN(AbstractGAN):
                                 , strides=2
                                 , padding='same')(x) # Blur?
                                 
-            n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
-            w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
-            internal_inputs.append(n)    
-            internal_inputs.append(w) 
+            # Inputs.
+            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
+            w = Input(shape=(1,))
+    
+            internal_inputs.append(n)
+            internal_inputs.append(w)
+            
+            # Input variables.
+            w = InputVariable(shape=(K.int_shape(x)[-1], )
+                              , variable_initializer=initializers.Ones())(w)
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
@@ -447,10 +498,16 @@ class StyleGAN(AbstractGAN):
                        , strides=1
                        , padding='same')(x)
         
-            n = Input(tensor=K.random_normal_variable(K.int_shape(x)[1:], 0, 1)) #?
-            w = Input(tensor=K.variable(np.random.RandomState().randn(K.int_shape(x)[-1])))
-            internal_inputs.append(n)    
-            internal_inputs.append(w) 
+            # Inputs.
+            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
+            w = Input(shape=(1,))
+    
+            internal_inputs.append(n)
+            internal_inputs.append(w)
+            
+            # Input variables.
+            w = InputVariable(shape=(K.int_shape(x)[-1], )
+                              , variable_initializer=initializers.Ones())(w) 
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
             x = LeakyReLU()(x)
@@ -465,6 +522,7 @@ class StyleGAN(AbstractGAN):
         output = Conv2D(filters=3
                         , kernel_size=1
                         , strides=1
+                        , activation='tanh'
                         , padding='same')(x)
                         
         self.syn = Model(inputs=[dlatents] + internal_inputs, outputs=[output], name='syn') #?
@@ -557,11 +615,11 @@ class StyleGAN(AbstractGAN):
         # Last layer.        
         if self.nn_arch['label_usage']:
             x = Lambda(lambda x: K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True))([x, labels]) #?
-            output = Activation('linear')(x)
+            output = Activation('sigmoid')(x)
             self.disc = Model(inputs=[images, labels], outputs=[output], name='disc')
         else:
             x = Lambda(lambda x: K.sum(x[0], axis=1, keepdims=True))(x)
-            output = Activation('linear')(x)
+            output = Activation('sigmoid')(x)
             self.disc = Model(inputs=[images], outputs=[output], name='disc')
          
     def train(self):
@@ -796,7 +854,7 @@ class StyleGAN(AbstractGAN):
                       , generator
                       , max_queue_size=10
                       , workers=1
-                      , use_multiprocessing=False
+                      , use_multiprocessing=False #?
                       , shuffle=True
                       , callbacks_disc_ext=None
                       , callbacks_gan=None
@@ -960,12 +1018,46 @@ class StyleGAN(AbstractGAN):
                         z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
              
                         # Train disc.
-                        if self.conf['multi_gpu']:
-                            outs = self.disc_ext_p.train_on_batch(x_inputs1_b + x_inputs2_b + z_inputs_b
-                                     , x_outputs_b + z_outputs_b) #?                    
+                        if self.conf['model_loading']:
+                            # Create normal random inputs.
+                            internal_inputs = []
+                            internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                               + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                                        
+                            for inp in self.disc_ext.inputs[5:]:
+                                if K.ndim(inp) == 4:
+                                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                               + list(K.int_shape(inp)[1:]))))
+                                else:
+                                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                               + list(K.int_shape(inp)[1:])))) # Trivial.
+                            
+                            if self.conf['multi_gpu']:
+                                outs = self.disc_ext_p.train_on_batch(x_inputs1_b + x_inputs2_b + z_inputs_b + internal_inputs
+                                         , x_outputs_b + z_outputs_b) #?                    
+                            else:
+                                outs = self.disc_ext.train_on_batch(x_inputs1_b +  x_inputs2_b + z_inputs_b + internal_inputs
+                                         , x_outputs_b + z_outputs_b) #?                        
                         else:
-                            outs = self.disc_ext.train_on_batch(x_inputs1_b +  x_inputs2_b + z_inputs_b
-                                     , x_outputs_b + z_outputs_b) #?
+                            # Create normal random inputs.
+                            internal_inputs = []
+                            internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                               + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                                        
+                            for inp in self.disc_ext.inputs[5:]:
+                                if K.ndim(inp) == 4:
+                                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                               + list(K.int_shape(inp)[1:]))))
+                                else:
+                                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                               + list(K.int_shape(inp)[1:])))) # Trivial.
+                            
+                            if self.conf['multi_gpu']:
+                                outs = self.disc_ext_p.train_on_batch(x_inputs1_b + x_inputs2_b + z_inputs_b + internal_inputs
+                                         , x_outputs_b + z_outputs_b) #?                    
+                            else:
+                                outs = self.disc_ext.train_on_batch(x_inputs1_b +  x_inputs2_b + z_inputs_b + internal_inputs
+                                         , x_outputs_b + z_outputs_b) #? 
 
                         #print(s_i, self.map.get_weights()[0])
 
@@ -981,7 +1073,7 @@ class StyleGAN(AbstractGAN):
                         for l, o in zip(metric_names, outs):
                             k_batch_logs[l] = o                        
             
-                        ws = self.map.get_weights()
+                        ws = self.gen.get_weights()
                         res = []
                         for w in ws:
                             res.append(np.isfinite(w).all())
@@ -1003,10 +1095,42 @@ class StyleGAN(AbstractGAN):
                     z_p_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
                     
                     # Train gan.
-                    if self.conf['multi_gpu']:
-                        outs = self.gan_p.train_on_batch(z_inputs_b, z_p_outputs_b)
+                    if self.conf['model_loading']:
+                        # Create normal random inputs.
+                        internal_inputs = []
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                                    
+                        for inp in self.disc_ext.inputs[5:]:
+                            if K.ndim(inp) == 4:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:]))))
+                            else:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                        
+                        if self.conf['multi_gpu']:
+                            outs = self.gan_p.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                        else:
+                            outs = self.gan.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
                     else:
-                        outs = self.gan.train_on_batch(z_inputs_b, z_p_outputs_b)
+                        # Create normal random inputs.
+                        internal_inputs = []
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                                    
+                        for inp in self.disc_ext.inputs[5:]:
+                            if K.ndim(inp) == 4:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:]))))
+                            else:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                        
+                        if self.conf['multi_gpu']:
+                            outs = self.gan_p.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                        else:
+                            outs = self.gan.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
 
                     outs = to_list(outs)
                     
@@ -1052,18 +1176,57 @@ class StyleGAN(AbstractGAN):
         labels: 2d numpy array
             Labels.
         """ 
-        super().generate(self, *args, **kwargs) #?
+        super(StyleGAN, self).generate(self, *args, **kwargs) #?
         
-        if self.conf['multi_gpu']:
-            if self.nn_arch['label_usage']:
-                s_images = self.gen_p.predict([latents, labels])
+        num_samples = latents.shape[0]
+        if self.conf['model_loading']: #?
+            # Create normal random inputs.
+            internal_inputs = []
+            internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                        
+            for inp in self.disc_ext.inputs[5:]:
+                if K.ndim(inp) == 4:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:]))))
+                else:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:])))) # Trivial.
+   
+            if self.conf['multi_gpu']:
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen_p.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen_p.predict([latents] + internal_inputs)
             else:
-                s_images = self.gen_p.predict([latents])
-        else:
-            if self.nn_arch['label_usage']:
-                s_images = self.gen.predict([latents, labels])
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen.predict([latents] + internal_inputs)
+        else:                
+            # Create normal random inputs.
+            internal_inputs = []
+            internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                        
+            for inp in self.disc_ext.inputs[5:]:
+                if K.ndim(inp) == 4:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:]))))
+                else:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:])))) # Trivial.
+   
+            if self.conf['multi_gpu']:
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen_p.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen_p.predict([latents] + internal_inputs)
             else:
-                s_images = self.gen.predict([latents])
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen.predict([latents] + internal_inputs)
         
         return s_images
                 

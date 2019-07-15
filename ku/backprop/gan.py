@@ -15,6 +15,7 @@ from keras.utils import multi_gpu_model
 from keras import optimizers
 import keras.backend as K
 from keras.utils.generic_utils import CustomObjectScope
+from keras.losses import binary_crossentropy
 
 EPSILON = 1e-8
 
@@ -30,13 +31,13 @@ def disc_ext_loss2(y_true, y_pred):
 '''
 
 def gan_loss(y_true, y_pred):
-    return K.mean(K.square(y_true - y_pred), axis=-1) #?
+    return K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
 
 def disc_ext_loss(y_true, y_pred):
-    return K.mean(K.square(y_true - y_pred), axis=-1) #?
+    return K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
 
 def disc_ext_loss2(y_true, y_pred):
-    return K.mean(K.square(y_true - y_pred), axis=-1) #?
+    return K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
 
 class AbstractGAN(ABC):
     """Abstract generative adversarial network."""
