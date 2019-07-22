@@ -13,6 +13,7 @@ import time
 import platform
 import json
 import warnings
+import glob
 
 import numpy as np
 import pandas as pd
@@ -96,12 +97,90 @@ def resize_image(image, res):
 class StyleGAN(AbstractGAN):
     """Style based GAN."""
 
-    # Constants.
-    GAN_PATH = 'style_gan_model.h5'
-    DISC_EXT_PATH = 'style_gan_disc_ext_model.h5'  
+    class TrainingSequenceFFHQ(Sequence):
+        """Training data set sequence for Flickr-Faces-HQ."""
+        
+        def __init__(self, raw_data_path, hps, res, batch_shuffle=True):
+            """
+            Parameters
+            ----------
+            raw_data_path: string
+                Raw data path.
+            hps: dict
+                Hyper-parameters.
+            res: Integer
+                Symmetric image resolution.
+            batch_shuffle:
+                Batch shuffling flag.
+            """
+            self.raw_data_path = raw_data_path
+            self.hps = hps
+            self.res = res
+            self.batch_shuffle = batch_shuffle
+            
+            self.sample_paths = glob.glob(os.path.join(self.raw_data_path, '**/*.png'), recursive=True)
+            self.total_samples = len(self.sample_paths)
+            
+            self.batch_size = self.hps['mini_batch_size']
+            self.hps['step'] = self.total_samples // self.batch_size
+            
+            if self.total_samples % self.batch_size != 0:
+                self.hps['temp_step'] = self.hps['step'] + 1
+            else:
+                self.hps['temp_step'] = self.hps['step']
+                
+        def __len__(self):
+            return self.hps['temp_step']
+        
+        def __getitem__(self, index):
+            images = []
+            labels = []
+            
+            if self.batch_shuffle:
+                idxes = np.random.choice(self.total_samples, size=self.batch_size)
+                for bi in idxes:
+                    image = imread(self.sample_paths[bi])                    
+                    #image = image/255
+                    image = resize_image(image, self.res)
+                    
+                    images.append(image)
+                    
+                    if platform.system() == 'Windows':
+                        labels.append(int(self.sample_paths[bi].split('\\')[-1].split('.')[0]))
+                    else:
+                        labels.append(int(self.sample_paths[bi].split('/')[-1].split('.')[0]))                
+            else:    
+                # Check the last index.
+                if index == (self.hps['temp_step'] - 1):
+                    for bi in range(index * self.batch_size, self.total_samples):
+                        image = imread(self.sample_paths[bi])                    
+                        #image = image/255
+                        image = resize_image(image, self.res)
+                        
+                        images.append(image)
+                        
+                        if platform.system() == 'Windows':
+                            labels.append(int(self.sample_paths[bi].split('\\')[-1].split('.')[0]))
+                        else:
+                            labels.append(int(self.sample_paths[bi].split('/')[-1].split('.')[0]))
+                else:
+                    for bi in range(index * self.batch_size, (index + 1) * self.batch_size):
+                        image = imread(self.sample_paths[bi])                    
+                        #image = image/255
+                        image = resize_image(image, self.res)
+                        
+                        images.append(image)
+                        
+                        if platform.system() == 'Windows':
+                            labels.append(int(self.sample_paths[bi].split('\\')[-1].split('.')[0]))
+                        else:
+                            labels.append(int(self.sample_paths[bi].split('/')[-1].split('.')[0]))           
+                                                                                                                     
+            return ({'inputs1': np.asarray(images)}
+                     , {'inputs2': np.asarray(labels, dtype=np.int32)}) 
 
     class TrainingSequenceUCCS(Sequence):
-        """Training data set sequence."""
+        """Training data set sequence for UCCS."""
         
         def __init__(self, raw_data_path, hps, res, batch_shuffle=True):
             """
@@ -202,7 +281,7 @@ class StyleGAN(AbstractGAN):
         if self.conf['model_loading'] != True:
             self._create_generator_2()
             self._create_discriminator()
-            self.compile()
+            self.compile2()
             
         self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
                                , 'TruncationTrick': TruncationTrick
@@ -402,6 +481,7 @@ class StyleGAN(AbstractGAN):
                         , strides=1
                         , activation='tanh'
                         , padding='same')(x)
+        output1 = Lambda(lambda x: x * 0.5 + 0.5)(output1)
 
         if self.nn_arch['label_usage']:
             self.gen = Model(inputs=inputs1 + [inputs2[0]] + internal_inputs, outputs=[output1, output2], name='gen') #?
@@ -626,13 +706,19 @@ class StyleGAN(AbstractGAN):
         """Train."""
         
         # Load training data.
+        '''
         generator = self.TrainingSequenceUCCS(self.raw_data_path
                                               , self.hps
                                               , self.syn_nn_arch['resolution']
                                               , batch_shuffle=True)
+        '''
+        generator = self.TrainingSequenceFFHQ(self.raw_data_path
+                                              , self.hps
+                                              , self.syn_nn_arch['resolution']
+                                              , batch_shuffle=True)        
         
         # Train.
-        self.fit_generator(generator
+        self.fit_generator2(generator
                            , max_queue_size=10
                            , workers=1
                            , use_multiprocessing=False
@@ -915,10 +1001,10 @@ class StyleGAN(AbstractGAN):
             if self.conf['multi_gpu']:
                 callback_metrics_disc_ext = self.disc_ext_p.metrics_names
                 self.disc_ext_p.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=self.disc_ext_p.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'disc_loss', 'disc_loss_2'] + self.disc_ext_p.stateful_metric_names)]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=self.disc_ext_p.stateful_metric_names))
+                                                         , stateful_metrics=['loss', 'disc_loss', 'disc_loss_2'] + self.disc_ext_p.stateful_metric_names))
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext_p.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -930,10 +1016,10 @@ class StyleGAN(AbstractGAN):
             else:
                 callback_metrics_disc_ext = self.disc_ext.metrics_names
                 self.disc_ext.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=self.disc_ext.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'disc_loss', 'disc_loss_2'] + self.disc_ext.stateful_metric_names)]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=self.disc_ext.stateful_metric_names))
+                                                         , stateful_metrics=['loss', 'disc_loss', 'disc_loss_2'] + self.disc_ext.stateful_metric_names))
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -947,10 +1033,10 @@ class StyleGAN(AbstractGAN):
             if self.conf['multi_gpu']:
                 callback_metrics_gan = self.gan_p.metrics_names
                 self.gan_p.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=self.gan_p.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + self.gan_p.stateful_metric_names)]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=self.gan_p.stateful_metric_names))
+                                                         , stateful_metrics=['loss'] + self.gan_p.stateful_metric_names))
                 _callbacks += (callbacks_gan or []) + [self.gan_p.history]
                 callbacks_gan = cbks.CallbackList(_callbacks)
                 
@@ -962,10 +1048,10 @@ class StyleGAN(AbstractGAN):
             else:
                 callback_metrics_gan = self.gan.metrics_names
                 self.gan.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=self.gan.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + self.gan.stateful_metric_names)]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=self.gan.stateful_metric_names))
+                                                         , stateful_metrics=['loss'] + self.gan.stateful_metric_names))
                 _callbacks += (callbacks_gan or []) + [self.gan.history]
                 callbacks_gan = cbks.CallbackList(_callbacks)
                 
@@ -1147,8 +1233,8 @@ class StyleGAN(AbstractGAN):
                 callbacks_disc_ext.on_epoch_end(e_i, epochs_log)
                 callbacks_gan.on_epoch_end(e_i, epochs_log)
         
-            callbacks_disc_ext.on_train_end #?
-            callbacks_gan.on_train_end #?  
+            callbacks_disc_ext.on_train_end() #?
+            callbacks_gan.on_train_end() #?  
         finally:
             try:
                 if enq is not None:
@@ -1165,6 +1251,560 @@ class StyleGAN(AbstractGAN):
             return self.disc_ext_p.history, self.gan_p.history
         else:
             return self.disc_ext.history, self.gan.history
+
+    def fit_generator2(self
+                      , generator
+                      , max_queue_size=10
+                      , workers=1
+                      , use_multiprocessing=False #?
+                      , shuffle=True
+                      , callbacks_disc=None
+                      , callbacks_gan=None
+                      , verbose=1):
+        """Train the GAN model with the generator.
+        
+        Parameters
+        ----------
+        generator: Generator
+            Training data generator.
+        max_queue_size: Integer
+            Maximum size for the generator queue (default: 10).
+        workers: Integer
+            Maximum number of processes to get samples (default: 1, 0: main thread).
+        use_multiprocessing: Boolean
+            Multi-processing flag (default: False).
+        shuffle: Boolean
+            Batch shuffling flag (default: True).
+        callbacks_disc: list
+            Callback list of disc (default=None).
+        callbacks_gan: list 
+            Callback list of gan (default=None).
+        verbose: Integer 
+            Verbose mode (default=1).
+            
+        Returns
+        -------
+        Training history.
+            tuple
+        """
+        
+        # Check exception.
+        if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
+            warnings.warn(UserWarning('For multi processing, use the instance of Sequence.'))
+        
+        try:        
+            # Get the output generator.
+            if workers > 0:
+                if isinstance(generator, Sequence):
+                    enq = OrderedEnqueuer(generator
+                                      , use_multiprocessing=use_multiprocessing
+                                      , shuffle=shuffle)
+                else:
+                    enq = GeneratorEnqueuer(generator
+                                            , use_multiprocessing=use_multiprocessing)
+                    
+                enq.start(workers=workers, max_queue_size=max_queue_size)
+                output_generator = enq.get()
+            else:
+                if isinstance(generator, Sequence):
+                    output_generator = iter_sequence_infinite(generator)
+                else:
+                    output_generator = generator
+            
+            # Train.        
+            # Callbacks.
+            # disc.
+            if self.conf['multi_gpu']:
+                callback_metrics_disc = self.disc_p.metrics_names
+                self.disc_p.history = cbks.History()
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + ['real_loss', 'fake_loss'] + self.disc_p.stateful_metric_names)]
+                if verbose:
+                    _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
+                                                         , stateful_metrics=['loss'] + ['real_loss', 'fake_loss'] + self.disc_p.stateful_metric_names))
+                _callbacks += (callbacks_disc or []) + [self.disc_p.history]
+                callbacks_disc = cbks.CallbackList(_callbacks)
+                
+                callbacks_disc.set_model(self.disc_p)
+                callbacks_disc.set_params({'epochs': self.hps['epochs']
+                                               , 'steps': self.hps['batch_step'] * self.hps['disc_k_step']
+                                               , 'verbose': verbose
+                                               , 'metrics': callback_metrics_disc})
+            else:
+                callback_metrics_disc = self.disc.metrics_names
+                self.disc.history = cbks.History()
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + ['real_loss', 'fake_loss'] + self.disc.stateful_metric_names)]
+                if verbose:
+                    _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
+                                                         , stateful_metrics=['loss'] + ['real_loss', 'fake_loss'] + self.disc.stateful_metric_names))
+                _callbacks += (callbacks_disc or []) + [self.disc.history]
+                callbacks_disc = cbks.CallbackList(_callbacks)
+                
+                callbacks_disc.set_model(self.disc)
+                callbacks_disc.set_params({'epochs': self.hps['epochs']
+                                               , 'steps': self.hps['batch_step'] * self.hps['disc_k_step'] #?
+                                               , 'verbose': verbose
+                                               , 'metrics': callback_metrics_disc})
+            
+            # gan.
+            if self.conf['multi_gpu']:
+                callback_metrics_gan = self.gan_p.metrics_names
+                self.gan_p.history = cbks.History()
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + self.gan_p.stateful_metric_names)]
+                if verbose:
+                    _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
+                                                         , stateful_metrics=['loss'] + self.gan_p.stateful_metric_names))
+                _callbacks += (callbacks_gan or []) + [self.gan_p.history]
+                callbacks_gan = cbks.CallbackList(_callbacks)
+                
+                callbacks_gan.set_model(self.gan_p)
+                callbacks_gan.set_params({'epochs': self.hps['epochs']
+                                               , 'steps': self.hps['batch_step'] #?
+                                               , 'verbose': verbose
+                                               , 'metrics': callback_metrics_gan})
+            else:
+                callback_metrics_gan = self.gan.metrics_names
+                self.gan.history = cbks.History()
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + self.gan.stateful_metric_names)]
+                if verbose:
+                    _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
+                                                         , stateful_metrics=['loss'] + self.gan.stateful_metric_names))
+                _callbacks += (callbacks_gan or []) + [self.gan.history]
+                callbacks_gan = cbks.CallbackList(_callbacks)
+                
+                callbacks_gan.set_model(self.gan)
+                callbacks_gan.set_params({'epochs': self.hps['epochs']
+                                               , 'steps': self.hps['batch_step'] #?
+                                               , 'verbose': verbose
+                                               , 'metrics': callback_metrics_gan})
+            
+            callbacks_disc.on_train_begin()
+            callbacks_gan.on_train_begin()           
+                        
+            num_samples = self.hps['mini_batch_size']
+            epochs_log = {}
+            
+            for e_i in range(self.hps['epochs']):
+                if self.conf['multi_gpu']:
+                    for m in self.disc_p.stateful_metric_functions: #
+                        m.reset_states()
+                    for m in self.gan_p.stateful_metric_functions: #
+                        m.reset_states()
+                else:
+                    for m in self.disc.stateful_metric_functions: #
+                        m.reset_states()
+                    for m in self.gan.stateful_metric_functions: #
+                        m.reset_states()
+                
+                callbacks_disc.on_epoch_begin(e_i)
+                callbacks_gan.on_epoch_begin(e_i)
+
+                for s_i in range(self.hps['batch_step']):                   
+                    for k_i in range(self.hps['disc_k_step']): #?
+                        # Build batch logs.
+                        k_batch_logs = {'batch': self.hps['batch_step'] * s_i + k_i, 'size': self.hps['mini_batch_size']}
+                        callbacks_disc.on_batch_begin(self.hps['batch_step'] * s_i + k_i, k_batch_logs)
+                        
+                        x_inputs1, x_inputs2 = next(output_generator)
+                        
+                        # Create x_inputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.
+                        x_inputs1_b = [x_inputs1['inputs1']]
+                        x_inputs2_b = [x_inputs2['inputs2']]
+                        
+                        if self.nn_arch['label_usage']:
+                            z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])] \
+                                + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
+                        else:
+                            z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])]
+                            
+                        x_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+                        z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+             
+                        # Train disc.
+                        if self.conf['model_loading']:
+                            if self.conf['multi_gpu']:                                     
+                                outs1 = self.disc_p.train_on_batch(x_inputs1_b + x_inputs2_b
+                                         , x_outputs_b) #?
+                                
+                                # Create normal random inputs.
+                                internal_inputs = []
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                            
+                                for inp in self.gen.inputs[3:]:
+                                    if K.ndim(inp) == 4:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:]))))
+                                    else:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:])))) # Trivial.
+                                
+                                z_inputs_b = self.gen_p.predict_on_batch(z_inputs_b + internal_inputs) 
+                                outs2 = self.disc_p.train_on_batch(z_inputs_b
+                                         , z_outputs_b) #?
+                                outs = 0.5 * np.add(outs1, outs2)#?                   
+                            else:
+                                outs1 = self.disc.train_on_batch(x_inputs1_b + x_inputs2_b
+                                         , x_outputs_b) #? 
+                                
+                                # Create normal random inputs.
+                                internal_inputs = []
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                            
+                                for inp in self.gen.inputs[3:]:
+                                    if K.ndim(inp) == 4:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:]))))
+                                    else:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:])))) # Trivial.
+                                
+                                z_inputs_b = self.gen.predict_on_batch(z_inputs_b + internal_inputs) 
+                                outs2 = self.disc.train_on_batch(z_inputs_b
+                                         , z_outputs_b) #?
+                                outs = 0.5 * np.add(outs1, outs2)#?                        
+                        else:                                                                                    
+                            if self.conf['multi_gpu']:
+                                outs1 = self.disc_p.train_on_batch(x_inputs1_b + x_inputs2_b
+                                         , x_outputs_b) #?
+                                                                
+                                # Create normal random inputs.
+                                internal_inputs = []
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                            
+                                for inp in self.gen.inputs[3:]:
+                                    if K.ndim(inp) == 4:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:]))))
+                                    else:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:])))) # Trivial.
+                                
+                                z_inputs_b = self.gen_p.predict_on_batch(z_inputs_b + internal_inputs)  
+                                outs2 = self.disc_p.train_on_batch(z_inputs_b
+                                         , z_outputs_b) #?
+                                outs = 0.5 * np.add(outs1, outs2)#?                    
+                            else:
+                                outs1 = self.disc.train_on_batch(x_inputs1_b + x_inputs2_b
+                                         , x_outputs_b) #? 
+                                                                
+                                # Create normal random inputs.
+                                internal_inputs = []
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                            
+                                for inp in self.gen.inputs[3:]:
+                                    if K.ndim(inp) == 4:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:]))))
+                                    else:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:])))) # Trivial.
+                                
+                                z_inputs_b = self.gen.predict_on_batch(z_inputs_b + internal_inputs) 
+                                outs2 = self.disc.train_on_batch(z_inputs_b
+                                         , z_outputs_b) #?
+                                outs = 0.5 * np.add(outs1, outs2)#?  
+
+                        #print(s_i, self.map.get_weights()[0])
+
+                        outs = to_list(outs) + [outs1, outs2] #?
+                        
+                        metric_names = self.disc.metrics_names + ['real_loss', 'fake_loss'] #?                          
+                            
+                        for l, o in zip(metric_names, outs):
+                            k_batch_logs[l] = o                        
+            
+                        ws = self.gen.get_weights()
+                        res = []
+                        for w in ws:
+                            res.append(np.isfinite(w).all())
+                        res = np.asarray(res)
+
+                        print('\n', k_batch_logs)
+                        #callbacks_disc.on_batch_end(self.hps['batch_step'] * s_i + k_i, k_batch_logs)
+                        
+                    # Build batch logs.
+                    batch_logs = {'batch': s_i, 'size': self.hps['mini_batch_size']}
+                    callbacks_gan.on_batch_begin(s_i, batch_logs)
+
+                    if self.nn_arch['label_usage']:
+                        z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])] \
+                                + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
+                    else:
+                        z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])]
+                    
+                    z_p_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+                    
+                    # Train gan.
+                    if self.conf['model_loading']:
+                        # Create normal random inputs.
+                        internal_inputs = []
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(self.gan.inputs[2]))[1:])))
+                                                    
+                        for inp in self.gan.inputs[3:]:
+                            if K.ndim(inp) == 4:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:]))))
+                            else:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                        
+                        if self.conf['multi_gpu']:
+                            outs = self.gan_p.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                        else:
+                            outs = self.gan.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                    else:
+                        # Create normal random inputs.
+                        internal_inputs = []
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(self.gan.inputs[2]))[1:])))
+                                                    
+                        for inp in self.gan.inputs[3:]:
+                            if K.ndim(inp) == 4:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:]))))
+                            else:
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                        
+                        if self.conf['multi_gpu']:
+                            outs = self.gan_p.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                        else:
+                            outs = self.gan.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+
+                    outs = to_list(outs)
+                    
+                    if self.conf['multi_gpu']:
+                        for l, o in zip(self.gan_p.metrics_names, outs):
+                            batch_logs[l] = o
+                    else:
+                        for l, o in zip(self.gan.metrics_names, outs):
+                            batch_logs[l] = o
+        
+                    print('\n', batch_logs)
+                    #callbacks_gan.on_batch_end(s_i, batch_logs)
+                    
+                    # Balance training.
+                    if k_batch_logs['loss'] > batch_logs['loss'] and np.abs(k_batch_logs['loss'] - batch_logs['loss']) > 0.1:
+                        while np.abs(k_batch_logs['loss'] - batch_logs['loss']) > 0.1:
+                            for k_i in range(self.hps['disc_k_step']): #?
+                                # Build batch logs.
+                                k_batch_logs = {'batch': self.hps['batch_step'] * s_i + k_i, 'size': self.hps['mini_batch_size']}
+                                #callbacks_disc.on_batch_begin(self.hps['batch_step'] * s_i + k_i, k_batch_logs)
+                                
+                                x_inputs1, x_inputs2 = next(output_generator)
+                                
+                                # Create x_inputs_b, z_inputs_b, x2_outputs_b, z_p_outputs_b, z_outputs_b.
+                                x_inputs1_b = [x_inputs1['inputs1']]
+                                x_inputs2_b = [x_inputs2['inputs2']]
+                                
+                                if self.nn_arch['label_usage']:
+                                    z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])] \
+                                        + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
+                                else:
+                                    z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])]
+                                    
+                                x_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+                                z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+                     
+                                # Train disc.
+                                if self.conf['model_loading']:
+                                    if self.conf['multi_gpu']:                                     
+                                        outs1 = self.disc_p.train_on_batch(x_inputs1_b + x_inputs2_b
+                                                 , x_outputs_b) #?
+                                        
+                                        # Create normal random inputs.
+                                        internal_inputs = []
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                                    
+                                        for inp in self.gen.inputs[3:]:
+                                            if K.ndim(inp) == 4:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:]))))
+                                            else:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                                        
+                                        z_inputs_b = self.gen_p.predict_on_batch(z_inputs_b + internal_inputs) 
+                                        outs2 = self.disc_p.train_on_batch(z_inputs_b
+                                                 , z_outputs_b) #?
+                                        outs = 0.5 * np.add(outs1, outs2)#?                   
+                                    else:
+                                        outs1 = self.disc.train_on_batch(x_inputs1_b + x_inputs2_b
+                                                 , x_outputs_b) #? 
+                                        
+                                        # Create normal random inputs.
+                                        internal_inputs = []
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                                    
+                                        for inp in self.gen.inputs[3:]:
+                                            if K.ndim(inp) == 4:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:]))))
+                                            else:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                                        
+                                        z_inputs_b = self.gen.predict_on_batch(z_inputs_b + internal_inputs) 
+                                        outs2 = self.disc.train_on_batch(z_inputs_b
+                                                 , z_outputs_b) #?
+                                        outs = 0.5 * np.add(outs1, outs2)#?                        
+                                else:                                                                                    
+                                    if self.conf['multi_gpu']:
+                                        outs1 = self.disc_p.train_on_batch(x_inputs1_b + x_inputs2_b
+                                                 , x_outputs_b) #?
+                                                                        
+                                        # Create normal random inputs.
+                                        internal_inputs = []
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                                    
+                                        for inp in self.gen.inputs[3:]:
+                                            if K.ndim(inp) == 4:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:]))))
+                                            else:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                                        
+                                        z_inputs_b = self.gen_p.predict_on_batch(z_inputs_b + internal_inputs)  
+                                        outs2 = self.disc_p.train_on_batch(z_inputs_b
+                                                 , z_outputs_b) #?
+                                        outs = 0.5 * np.add(outs1, outs2)#?                    
+                                    else:
+                                        outs1 = self.disc.train_on_batch(x_inputs1_b + x_inputs2_b
+                                                 , x_outputs_b) #? 
+                                                                        
+                                        # Create normal random inputs.
+                                        internal_inputs = []
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                                                    
+                                        for inp in self.gen.inputs[3:]:
+                                            if K.ndim(inp) == 4:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:]))))
+                                            else:
+                                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                           + list(K.int_shape(inp)[1:])))) # Trivial.
+                                        
+                                        z_inputs_b = self.gen.predict_on_batch(z_inputs_b + internal_inputs) 
+                                        outs2 = self.disc.train_on_batch(z_inputs_b
+                                                 , z_outputs_b) #?
+                                        outs = 0.5 * np.add(outs1, outs2)#?  
+        
+                                for d in internal_inputs:
+                                    del d
+                                #print(s_i, self.map.get_weights()[0])
+        
+                                outs = to_list(outs) + [outs1, outs2] #?
+                                
+                                metric_names = self.disc.metrics_names + ['real_loss', 'fake_loss'] #?                          
+                                    
+                                for l, o in zip(metric_names, outs):
+                                    k_batch_logs[l] = o                        
+                    
+                                ws = self.gen.get_weights()
+                                res = []
+                                for w in ws:
+                                    res.append(np.isfinite(w).all())
+                                res = np.asarray(res)
+        
+                                print('\n', k_batch_logs)
+                                #callbacks_disc.on_batch_end(self.hps['batch_step'] * s_i + k_i, k_batch_logs)
+                    elif k_batch_logs['loss'] < batch_logs['loss'] and np.abs(k_batch_logs['loss'] - batch_logs['loss']) > 0.1:
+                        while np.abs(k_batch_logs['loss'] - batch_logs['loss']) > 0.1:
+                            # Build batch logs.
+                            batch_logs = {'batch': s_i, 'size': self.hps['mini_batch_size']}
+                            #callbacks_gan.on_batch_begin(s_i, batch_logs)
+        
+                            if self.nn_arch['label_usage']:
+                                z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])] \
+                                        + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
+                            else:
+                                z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])]
+                            
+                            z_p_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.output_shape[1:])))]
+                            
+                            # Train gan.
+                            if self.conf['model_loading']:
+                                # Create normal random inputs.
+                                internal_inputs = []
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(self.gan.inputs[2]))[1:])))
+                                                            
+                                for inp in self.gan.inputs[3:]:
+                                    if K.ndim(inp) == 4:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:]))))
+                                    else:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:])))) # Trivial.
+                                
+                                if self.conf['multi_gpu']:
+                                    outs = self.gan_p.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                                else:
+                                    outs = self.gan.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                            else:
+                                # Create normal random inputs.
+                                internal_inputs = []
+                                internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(self.gan.inputs[2]))[1:])))
+                                                            
+                                for inp in self.gan.inputs[3:]:
+                                    if K.ndim(inp) == 4:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:]))))
+                                    else:
+                                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                                   + list(K.int_shape(inp)[1:])))) # Trivial.
+                                
+                                if self.conf['multi_gpu']:
+                                    outs = self.gan_p.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+                                else:
+                                    outs = self.gan.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
+        
+                            for d in internal_inputs:
+                                del d
+                                    
+                            outs = to_list(outs)
+                            
+                            if self.conf['multi_gpu']:
+                                for l, o in zip(self.gan_p.metrics_names, outs):
+                                    batch_logs[l] = o
+                            else:
+                                for l, o in zip(self.gan.metrics_names, outs):
+                                    batch_logs[l] = o
+                
+                            print('\n', batch_logs)
+                            #callbacks_gan.on_batch_end(s_i, batch_logs)                            
+                              
+                callbacks_disc.on_epoch_end(e_i, epochs_log)
+                callbacks_gan.on_epoch_end(e_i, epochs_log)
+        
+            callbacks_disc.on_train_end() #?
+            callbacks_gan.on_train_end() #?  
+        finally:
+            try:
+                if enq is not None:
+                    enq.stop()
+            finally:
+                pass
+
+        # Save models.
+        with CustomObjectScope(self.custom_objects):
+            self.disc.save(self.DISC_PATH)
+            self.gan.save(self.GAN_PATH)
+
+        if self.conf['multi_gpu']:
+            return self.disc_p.history, self.gan_p.history
+        else:
+            return self.disc.history, self.gan.history
 
     def generate(self, latents, labels, *args, **kwargs):
         """Generate styled images.
@@ -1229,13 +1869,81 @@ class StyleGAN(AbstractGAN):
                     s_images = self.gen.predict([latents] + internal_inputs)
         
         return s_images
+
+    def generate2(self, latents, labels, *args, **kwargs):
+        """Generate styled images.
+        
+        Parameters
+        ----------
+        latents: 2d numpy array
+            latents.
+        labels: 2d numpy array
+            Labels.
+        """ 
+        super(StyleGAN, self).generate(self, *args, **kwargs) #?
+        
+        num_samples = latents.shape[0]
+        if self.conf['model_loading']: #?
+            # Create normal random inputs.
+            internal_inputs = []
+            internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                        
+            for inp in self.gen.inputs[3:]:
+                if K.ndim(inp) == 4:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:]))))
+                else:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:])))) # Trivial.
+   
+            if self.conf['multi_gpu']:
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen_p.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen_p.predict([latents] + internal_inputs)
+            else:
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen.predict([latents] + internal_inputs)
+        else:                
+            # Create normal random inputs.
+            internal_inputs = []
+            internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(self.gen.inputs[2]))[1:])))
+                                        
+            for inp in self.gen.inputs[3:]:
+                if K.ndim(inp) == 4:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:]))))
+                else:
+                    internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                               + list(K.int_shape(inp)[1:])))) # Trivial.
+   
+            if self.conf['multi_gpu']:
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen_p.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen_p.predict([latents] + internal_inputs)
+            else:
+                if self.nn_arch['label_usage']:
+                    s_images = self.gen.predict([latents, labels] + internal_inputs)
+                else:
+                    s_images = self.gen.predict([latents] + internal_inputs)
+        
+        return s_images
                 
 def main():
     """Main."""
     
     # Load configuration.
-    with open(os.path.join("style_based_gan_conf.json"), 'r') as f:
-        conf = json.load(f)
+    if platform.system() == 'Windows':
+        with open(os.path.join("style_based_gan_conf_win.json"), 'r') as f:
+            conf = json.load(f)  
+    else:
+        with open(os.path.join("style_based_gan_conf.json"), 'r') as f:
+            conf = json.load(f)   
 
     if conf['mode'] == 'train':      
         # Train.

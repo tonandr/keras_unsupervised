@@ -25,7 +25,7 @@ class InputVariable(Layer):
                  , variable_initializer=initializers.Ones()
                  , **kwargs):
         self.shape=shape
-        self.variable_initializer=variable_initializer
+        self.variable_initializer=initializers.get(variable_initializer)
         super(InputVariable, self).__init__(**kwargs)
 
     def build(self, input_shape):

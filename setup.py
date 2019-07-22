@@ -79,15 +79,15 @@ setup(
     #
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['tensorflow-gpu>=1.13.1'
-                      , 'tensorflow-probability>=0.6.0'
-                      , 'keras>=2.2.4'
-                      , 'numpy>=1.16.4'
+    install_requires=[#'tensorflow-gpu>=1.13.1'
+                       'tensorflow-probability>=0.6.0'
+                      #, 'keras>=2.2.4'
+                      #, 'numpy>=1.16.4'
                       , 'pandas>=0.24.2'
                       , 'h5py>=2.8.0'
                       , 'scikit-image>=0.15.0'
-                      , 'scipy>=1.2.1'
-                      , 'opencv-conrtrib-python>=4.1.0.25'],  # Optional
+                      #, 'scipy>=1.2.1'
+                      , 'opencv-contrib-python>=4.1.0.25'],  # Optional
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"
