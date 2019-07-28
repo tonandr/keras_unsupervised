@@ -4,6 +4,7 @@
 	"model_loading" : false,
 	"multi_gpu" : false,
 	"num_gpus" : 4,
+	"gan_mode": 1,
 	"hps" : {
 		"lr" : 0.0002,
 		"beta_1" : 0.5,
