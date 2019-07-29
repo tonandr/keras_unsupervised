@@ -11,7 +11,7 @@
 		"beta_2" : 0.99,
 		"decay" : 0.0,
 		"epochs" : 1,
-		"batch_step" : 1000,
+		"batch_step" : 100,
 		"disc_k_step" : 5,
 		"mini_batch_size" : 128,
 		"mixing_prob" : 0.9,

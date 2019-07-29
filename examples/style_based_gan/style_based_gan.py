@@ -20,9 +20,9 @@ import pandas as pd
 from skimage.io import imread, imsave
 import cv2 as cv
 
-from keras.models import Model
+from keras.models import Model, model_from_json
 from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply
-from keras.layers import LeakyReLU, Conv2D, Conv2DTranspose,Activation
+from keras.layers import LeakyReLU, Conv2D, Conv2DTranspose, Activation, AveragePooling2D
 import keras.backend as K 
 from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from keras.engine.training_utils import iter_sequence_infinite
@@ -32,7 +32,7 @@ from keras import callbacks as cbks, initializers
 
 from ku.backprop import AbstractGAN
 from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization, InputVariable
-from keras.layers.pooling import AveragePooling2D
+from ku import save_model_jh5, load_model_jh5 
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -1007,12 +1007,12 @@ class StyleGAN(AbstractGAN):
             # Callbacks.
             # disc ext.
             if self.conf['multi_gpu']:
-                callback_metrics_disc_ext = self.disc_ext_p.metrics_names
+                callback_metrics_disc_ext =  self.disc_ext_p.metrics_names if hasattr(self.disc_ext_p, 'metrics_names') else []
                 self.disc_ext_p.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'] + self.disc_p.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'] + self.disc_ext_p.stateful_metric_names))
+                                                         , stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss']))
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext_p.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -1022,12 +1022,12 @@ class StyleGAN(AbstractGAN):
                                                , 'verbose': verbose
                                                , 'metrics': callback_metrics_disc_ext})
             else:
-                callback_metrics_disc_ext = self.disc_ext.metrics_names
+                callback_metrics_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
                 self.disc_ext.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'] + self.disc_ext.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'] + self.disc_ext.stateful_metric_names))
+                                                         , stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss']))
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -1039,12 +1039,12 @@ class StyleGAN(AbstractGAN):
             
             # gen_disc.
             if self.conf['multi_gpu']:
-                callback_metrics_gen_disc = self.gen_disc_p.metrics_names
+                callback_metrics_gen_disc = self.gen_disc_p.metrics_names if hasattr(self.gen_disc_p, 'metrics_names') else []
                 self.gen_disc_p.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + self.gen_disc_p.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss'] + self.gen_disc_p.stateful_metric_names))
+                                                         , stateful_metrics=['loss']))
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc_p.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
@@ -1054,12 +1054,12 @@ class StyleGAN(AbstractGAN):
                                                , 'verbose': verbose
                                                , 'metrics': callback_metrics_gen_disc})
             else:
-                callback_metrics_gen_disc = self.gen_disc.metrics_names
+                callback_metrics_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
                 self.gen_disc.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'] + self.gen_disc.stateful_metric_names)]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss'] + self.gen_disc.stateful_metric_names))
+                                                         , stateful_metrics=['loss']))
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
@@ -1075,18 +1075,7 @@ class StyleGAN(AbstractGAN):
             num_samples = self.hps['mini_batch_size']
             epochs_log = {}
             
-            for e_i in range(self.hps['epochs']):
-                if self.conf['multi_gpu']:
-                    for m in self.disc_ext_p.stateful_metric_functions: #
-                        m.reset_states()
-                    for m in self.gen_disc_p.stateful_metric_functions: #
-                        m.reset_states()
-                else:
-                    for m in self.disc_ext.stateful_metric_functions: #
-                        m.reset_states()
-                    for m in self.gen_disc.stateful_metric_functions: #
-                        m.reset_states()
-                
+            for e_i in range(self.hps['epochs']):                
                 callbacks_disc_ext.on_epoch_begin(e_i)
                 callbacks_gen_disc.on_epoch_begin(e_i)
 
@@ -1115,7 +1104,7 @@ class StyleGAN(AbstractGAN):
                         z_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
              
                         # x_hat.
-                        x_inputs_hat_b = [np.ones(shape=(num_samples, 1))]
+                        #x_inputs_hat_b = [np.ones(shape=(num_samples, 1))]
                         x_outputs_hat_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
                         
                         # Train disc.
@@ -1220,7 +1209,7 @@ class StyleGAN(AbstractGAN):
             return self.disc_ext_p.history, self.gen_disc_p.history
         else:
             return self.disc_ext.history, self.gen_disc.history
-
+        
     def generate(self, latents, labels, *args, **kwargs):
         """Generate styled images.
         

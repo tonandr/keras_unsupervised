@@ -50,51 +50,16 @@ class AbstractGAN(ABC):
                 self.custom_objects['gen_disc_wgan_loss'] = gen_disc_wgan_loss
                                                             
                 with CustomObjectScope(self.custom_objects): 
-                    if self.conf['multi_gpu']:
-                        # gen_disc.
-                        self.gen_disc = load_model(self.GEN_DISC_PATH)
-                        self.gen_disc_p = multi_gpu_model(self.gen_disc, gpus=self.conf['num_gpus'])
-                        
-                        opt = optimizers.Adam(lr=self.hps['lr']
-                                                , beta_1=self.hps['beta_1']
-                                                , beta_2=self.hps['beta_2']
-                                                , decay=self.hps['decay']) 
-                        self.gen_disc_p.compile(optimizer=opt
-                                                , loss=self.gen_disc.losses
-                                                , loss_weights=self.gen_disc.loss_weights) #?
-                                                
-                        # gen.
-                        self.gen = self.gen_disc.get_layer('gen')
-                        self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])                                                  
-                    else:
-                        # gen_disc.
-                        self.gen_disc = load_model(self.GEN_DISC_PATH)
-
-                        # gen.
-                        self.gen = self.gen_disc.get_layer('gen')
+                    # gen_disc.
+                    self.gen_disc = load_model(self.GEN_DISC_PATH, compile=False)
+                                            
+                    # gen.
+                    self.gen = self.gen_disc.get_layer('gen')
                     
                     # disc.
                     self.disc = self.gen_disc.get_layer('disc')
 
-                self.custom_objects['InputRandomUniform'] = InputRandomUniform
-                self.custom_objects['disc_ext_wgan_loss'] = disc_ext_wgan_loss
-                
-                x_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]  
-                p_disc_ext_wgan_gp_loss = partial(disc_ext_wgan_gp_loss, x_inputs[0]) #?
-                p_disc_ext_wgan_gp_loss.__name__ = 'p_disc_ext_wgan_gp_loss'
-                self.custom_objects['p_disc_ext_wgan_gp_loss'] = p_disc_ext_wgan_gp_loss
-
-                with CustomObjectScope(self.custom_objects): 
-                    if self.conf['multi_gpu']:                        
-                        # disc_ext.
-                        self.disc_ext = load_model(self.DISC_EXT_PATH)
-                        self.disc_ext_p = multi_gpu_model(self.disc_ext, gpus=self.conf['num_gpus'])
-                        self.disc_ext_p.compile(optimizer=opt
-                                                , loss=self.disc_ext.losses
-                                                , loss_weights=self.disc_ext.loss_weights) #?                                              
-                    else:
-                        # disc_ext.
-                        self.disc_ext = load_model(self.DISC_EXT_PATH)
+                self.compile() #?                   
         else:
             raise ValueError('The valid gan mode must be assigned.')
                                     
@@ -116,12 +81,14 @@ class AbstractGAN(ABC):
             raise RuntimeError('The generator and discriminator must be created')
         
         if self.conf['gan_mode'] == REGULAR_GAN:
-            self._compile_regular_gan()
+            #self._compile_regular_gan()
+            pass
         elif self.conf['gan_mode'] == W_GAN_GP:
             self._compile_wgan_gp()
         else:
             raise ValueError('The valid gan mode must be assigned.')
 
+    '''
     def _compile_regular_gan(self):
         """Compile regular gan."""
         
@@ -184,6 +151,7 @@ class AbstractGAN(ABC):
             self.gen_disc_p.compile(optimizer=opt
                          , loss=self.gen_disc_losses #?
                          , loss_weights=self.gen_disc_loss_weights)
+    '''
 
     def _compile_wgan_gp(self):
         """Compile wgan_gp."""
@@ -220,18 +188,10 @@ class AbstractGAN(ABC):
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
 
-        # Make losses.
-        p_disc_ext_wgan_gp_loss = partial(disc_ext_wgan_gp_loss
-                                          , input_variables = x3
-                                          , wgan_lambda = 10.0
-                                          , wgan_target = 1.0)
-        p_disc_ext_wgan_gp_loss.__name__ = 'p_disc_ext_wgan_gp_loss'
-        self.custom_objects = {}
-        self.custom_objects['p_disc_ext_wgan_gp_loss'] = p_disc_ext_wgan_gp_loss
-        
+        # Make losses.        
         self.disc_ext_losses = [disc_ext_wgan_loss
                                 , disc_ext_wgan_loss
-                                , p_disc_ext_wgan_gp_loss]
+                                , disc_ext_wgan_gp_loss(input_variables=x3)]
         self.disc_ext_loss_weights = [-1.0, 1.0, 1.0]
 
         if hasattr(self, 'disc_ext_losses') == False \

@@ -4,7 +4,7 @@ Created on 2019. 6. 12.
 @author: Inwoo Chung (gutomitai@gmail.com)
 """
 
-from keras.models import Model
+from keras.models import Model, model_from_json
 from keras.layers import Input, Dense
 from keras.engine.input_layer import InputLayer
 
@@ -68,3 +68,32 @@ def _reverse_output(layer, tensor):
         pass
     
     return output
+
+def save_model_jh5(model):
+    """Save a model with the json model file and hdf5 weight data.
+    
+    Parameters
+    ----------
+    model: Keras model
+        Model instance.
+    """
+    with open(model.name + ".json", 'w') as f:
+        f.write(model.to_json())
+    
+    model.save_weights(model.name + '.h5')
+    
+def load_model_jh5(model_name):
+    """Load a model with the json model file and hdf5 weight data.
+    
+    Parameters
+    ----------
+    model_name: string
+        Model name.
+    """
+    with open(model_name + '.json', 'r') as f:
+        model_json = f.read()
+        
+    model = model_from_json(model_json)
+    model.load_weights(model_name + '.h5')
+    
+    return model
