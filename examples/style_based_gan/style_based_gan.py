@@ -22,7 +22,7 @@ import cv2 as cv
 
 from keras.models import Model
 from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply
-from keras.layers import LeakyReLU, Conv2D, Conv2DTranspose, DepthwiseConv2D, Activation
+from keras.layers import LeakyReLU, Conv2D, Conv2DTranspose,Activation
 import keras.backend as K 
 from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from keras.engine.training_utils import iter_sequence_infinite
@@ -32,7 +32,7 @@ from keras import callbacks as cbks, initializers
 
 from ku.backprop import AbstractGAN
 from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization, InputVariable
-from numpy.linalg.linalg import norm
+from keras.layers.pooling import AveragePooling2D
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -284,9 +284,15 @@ class StyleGAN(AbstractGAN):
             self._create_discriminator()
                         
             # Compile.
-            self.compile()
-            
-        self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
+            self.compile() #?
+        
+        if hasattr(self, 'custom_objects'):
+            self.custom_objects['AdaptiveINWithStyle'] = AdaptiveINWithStyle
+            self.custom_objects['TruncationTrick'] = TruncationTrick
+            self.custom_objects['StyleMixingRegularization'] = StyleMixingRegularization
+            self.custom_objects['InputVariable'] = InputVariable # Loss?
+        else:    
+            self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
                                , 'TruncationTrick': TruncationTrick
                                , 'StyleMixingRegularization': StyleMixingRegularization
                                , 'InputVariable': InputVariable} # Loss?
@@ -673,16 +679,14 @@ class StyleGAN(AbstractGAN):
         # Middle layers.
         for res in range(res_log2, 2, -1):
             x = Conv2D(filters=self._cal_num_chs(res - 1) #?
-                   , kernel_size=1
+                   , kernel_size=3
                    , padding='same')(x) #?
             x = LeakyReLU()(x)
-            x = DepthwiseConv2D(kernel_size=3, padding='same')(x)
+            
             x = Conv2D(filters=self._cal_num_chs(res - 2) #?
                    , kernel_size=3
                    , padding='same')(x) #?
-            x = DepthwiseConv2D(kernel_size=3
-                                , padding='same'
-                                , strides=2)(x)
+            x = AveragePooling2D()(x)
             x = LeakyReLU()(x)                   
         
         # Layer for 4*4 size.
@@ -1089,8 +1093,8 @@ class StyleGAN(AbstractGAN):
                 for s_i in range(self.hps['batch_step']):                   
                     for k_i in range(self.hps['disc_k_step']): #?
                         # Build batch logs.
-                        k_batch_logs = {'batch': self.hps['batch_step'] * s_i + k_i, 'size': self.hps['mini_batch_size']}
-                        callbacks_disc_ext.on_batch_begin(self.hps['batch_step'] * s_i + k_i, k_batch_logs)
+                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['mini_batch_size']}
+                        callbacks_disc_ext.on_batch_begin(self.hps['disc_k_step'] * s_i + k_i + 1, k_batch_logs)
                         
                         x_inputs1, x_inputs2 = next(output_generator)
                         
@@ -1118,9 +1122,9 @@ class StyleGAN(AbstractGAN):
                         # Create normal random inputs.
                         internal_inputs = []
                         internal_inputs.append(np.random.normal(size=tuple([num_samples] \
-                                                                           + list(K.int_shape(self.disc_ext.inputs[5]))[1:]))) #??
+                                                                           + list(K.int_shape(self.disc_ext.inputs[4]))[1:]))) #??
                                                     
-                        for inp in self.disc_ext.inputs[6:]:
+                        for inp in self.disc_ext.inputs[5:]:
                             if K.ndim(inp) == 4:
                                 internal_inputs.append(np.random.normal(size=tuple([num_samples] \
                                                                            + list(K.int_shape(inp)[1:]))))
@@ -1129,16 +1133,16 @@ class StyleGAN(AbstractGAN):
                                                                            + list(K.int_shape(inp)[1:])))) # Trivial.
                         
                         if self.conf['multi_gpu']:
-                            outs = self.disc_ext_p.train_on_batch(x_inputs1_b + x_inputs2_b + z_inputs_b + internal_inputs[0] + x_inputs_hat_b + internal_inputs[1:]
+                            outs = self.disc_ext_p.train_on_batch(x_inputs1_b + x_inputs2_b + z_inputs_b + internal_inputs
                                      , x_outputs_b + z_outputs_b + x_outputs_hat_b) #?                    
                         else:
-                            outs = self.disc_ext.train_on_batch(x_inputs1_b +  x_inputs2_b + z_inputs_b + internal_inputs[0] + x_inputs_hat_b + internal_inputs[1:]
+                            outs = self.disc_ext.train_on_batch(x_inputs1_b +  x_inputs2_b + z_inputs_b + internal_inputs
                                      , x_outputs_b + z_outputs_b + x_outputs_hat_b) #?  
 
                         #print(s_i, self.map.get_weights()[0])
                         outs = to_list(outs) #?
                         
-                        metric_names = self.disc_ext.metrics_names + ['real_loss', 'fake_loss', 'gp_loss'] #?                             
+                        metric_names = ['loss', 'real_loss', 'fake_loss', 'gp_loss'] #?                             
                             
                         for l, o in zip(metric_names, outs):
                             k_batch_logs[l] = o                        
@@ -1148,12 +1152,12 @@ class StyleGAN(AbstractGAN):
                         for w in ws:
                             res.append(np.isfinite(w).all())
                         res = np.asarray(res)
-
-                        #print('\n', k_batch_logs)
-                        callbacks_disc_ext.on_batch_end(self.hps['batch_step'] * s_i + k_i, k_batch_logs)
+                        
+                        callbacks_disc_ext.on_batch_end(self.hps['disc_k_step'] * s_i + k_i + 1, k_batch_logs)
+                        print('\n', k_batch_logs)
                         
                     # Build batch logs.
-                    batch_logs = {'batch': s_i, 'size': self.hps['mini_batch_size']}
+                    batch_logs = {'batch': s_i + 1, 'size': self.hps['mini_batch_size']}
                     callbacks_gen_disc.on_batch_begin(s_i, batch_logs)
 
                     if self.nn_arch['label_usage']:
@@ -1168,9 +1172,9 @@ class StyleGAN(AbstractGAN):
                     # Create normal random inputs.
                     internal_inputs = []
                     internal_inputs.append(np.random.normal(size=tuple([num_samples] \
-                                                                       + list(K.int_shape(self.disc_ext.inputs[5]))[1:])))
+                                                                       + list(K.int_shape(self.gen_disc.inputs[2]))[1:]))) #?
                                                 
-                    for inp in self.disc_ext.inputs[6:]:
+                    for inp in self.gen_disc.inputs[3:]:
                         if K.ndim(inp) == 4:
                             internal_inputs.append(np.random.normal(size=tuple([num_samples] \
                                                                        + list(K.int_shape(inp)[1:]))))
@@ -1192,8 +1196,8 @@ class StyleGAN(AbstractGAN):
                         for l, o in zip(self.gen_disc.metrics_names, outs):
                             batch_logs[l] = o
         
-                    #print('\n', batch_logs)
                     callbacks_gen_disc.on_batch_end(s_i, batch_logs)
+                    print('\n', batch_logs)
                     
                 callbacks_disc_ext.on_epoch_end(e_i, epochs_log)
                 callbacks_gen_disc.on_epoch_end(e_i, epochs_log)

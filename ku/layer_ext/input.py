@@ -70,11 +70,11 @@ class InputRandomUniform(Layer):
         super(InputRandomUniform, self).build(input_shape)
 
     def call(self, x):        
-        return K.random_uniform(shape=self.shape
+        return K.identity(K.random_uniform(shape=self.shape
                                 , minval=self.minval
                                 , maxval=self.maxval
                                 , dtype=self.dtype
-                                , seed=self.seed)
+                                , seed=self.seed))
 
     def get_config(self):
         config = {'shape': self.shape
@@ -87,4 +87,4 @@ class InputRandomUniform(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
     def compute_output_shape(self, input_shape):
-        return self.shape
+        return tuple([input_shape[0]] + list(self.shape))

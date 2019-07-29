@@ -40,49 +40,63 @@ class AbstractGAN(ABC):
         """
         self.conf = conf #?
         
-        if self.conf['model_loading']:
-            if not hasattr(self, 'custom_objects'):
-                RuntimeError('Before models, custom_objects must be created.')
-            
-            self.custom_objects['InputRandomUniform'] = InputRandomUniform
-            self.custom_objects['gen_disc_wgan_loss'] = gen_disc_wgan_loss
-            self.custom_objects['disc_ext_wgan_loss'] = disc_ext_wgan_loss
-            self.custom_objects['disc_ext_wgan_gp_loss'] = disc_ext_wgan_gp_loss
-                            
-            with CustomObjectScope(self.custom_objects): 
-                if self.conf['multi_gpu']:
-                    # gen_disc.
-                    self.gen_disc = load_model(self.GEN_DISC_PATH)
-                    self.gen_disc_p = multi_gpu_model(self.gen_disc, gpus=self.conf['num_gpus'])
-                    
-                    opt = optimizers.Adam(lr=self.hps['lr']
-                                            , beta_1=self.hps['beta_1']
-                                            , beta_2=self.hps['beta_2']
-                                            , decay=self.hps['decay']) 
-                    self.gen_disc_p.compile(optimizer=opt
-                                            , loss=self.gen_disc.losses
-                                            , loss_weights=self.gen_disc.loss_weights) #?
-                    
-                    # disc_ext.
-                    self.disc_ext = load_model(self.DISC_EXT_PATH)
-                    self.disc_ext_p = multi_gpu_model(self.disc_ext, gpus=self.conf['num_gpus'])
-                    self.disc_ext_p.compile(optimizer=opt
-                                            , loss=self.disc_ext.losses
-                                            , loss_weights=self.disc_ext.loss_weights) #?
-                    
-                    # gen.
-                    self.gen = self.gen_disc.get_layer('gen')
-                    self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])                                                  
-                else:
-                    # gen_disc.
-                    self.gen_disc = load_model(self.GEN_DISC_PATH)
-                    # disc_ext.
-                    self.disc_ext = load_model(self.DISC_EXT_PATH)
-                    # gen.
-                    self.gen = self.gan.get_layer('gen')
+        if self.conf['gan_mode'] == REGULAR_GAN:
+            pass
+        elif self.conf['gan_mode'] == W_GAN_GP:
+            if self.conf['model_loading']:
+                if not hasattr(self, 'custom_objects'):
+                    RuntimeError('Before models, custom_objects must be created.')
                 
-                # disc.
-                self.disc = self.gan.get_layer('disc')
+                self.custom_objects['gen_disc_wgan_loss'] = gen_disc_wgan_loss
+                                                            
+                with CustomObjectScope(self.custom_objects): 
+                    if self.conf['multi_gpu']:
+                        # gen_disc.
+                        self.gen_disc = load_model(self.GEN_DISC_PATH)
+                        self.gen_disc_p = multi_gpu_model(self.gen_disc, gpus=self.conf['num_gpus'])
+                        
+                        opt = optimizers.Adam(lr=self.hps['lr']
+                                                , beta_1=self.hps['beta_1']
+                                                , beta_2=self.hps['beta_2']
+                                                , decay=self.hps['decay']) 
+                        self.gen_disc_p.compile(optimizer=opt
+                                                , loss=self.gen_disc.losses
+                                                , loss_weights=self.gen_disc.loss_weights) #?
+                                                
+                        # gen.
+                        self.gen = self.gen_disc.get_layer('gen')
+                        self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])                                                  
+                    else:
+                        # gen_disc.
+                        self.gen_disc = load_model(self.GEN_DISC_PATH)
+
+                        # gen.
+                        self.gen = self.gen_disc.get_layer('gen')
+                    
+                    # disc.
+                    self.disc = self.gen_disc.get_layer('disc')
+
+                self.custom_objects['InputRandomUniform'] = InputRandomUniform
+                self.custom_objects['disc_ext_wgan_loss'] = disc_ext_wgan_loss
+                
+                x_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]  
+                p_disc_ext_wgan_gp_loss = partial(disc_ext_wgan_gp_loss, x_inputs[0]) #?
+                p_disc_ext_wgan_gp_loss.__name__ = 'p_disc_ext_wgan_gp_loss'
+                self.custom_objects['p_disc_ext_wgan_gp_loss'] = p_disc_ext_wgan_gp_loss
+
+                with CustomObjectScope(self.custom_objects): 
+                    if self.conf['multi_gpu']:                        
+                        # disc_ext.
+                        self.disc_ext = load_model(self.DISC_EXT_PATH)
+                        self.disc_ext_p = multi_gpu_model(self.disc_ext, gpus=self.conf['num_gpus'])
+                        self.disc_ext_p.compile(optimizer=opt
+                                                , loss=self.disc_ext.losses
+                                                , loss_weights=self.disc_ext.loss_weights) #?                                              
+                    else:
+                        # disc_ext.
+                        self.disc_ext = load_model(self.DISC_EXT_PATH)
+        else:
+            raise ValueError('The valid gan mode must be assigned.')
                                     
     @abstractmethod
     def _create_generator(self):
@@ -194,8 +208,8 @@ class AbstractGAN(ABC):
         
         # x_hat.
         x3_inputs = [Input(shape=(1, ))] # Trivial input.
-        x3_epsilon = [InputRandomUniform((self.conf['hps']['mini_batch_size'], 1, 1, 1))(x3_inputs)]
-        x3 = Lambda(lambda x: x[2] * x[0] + (1.0 - x[2]) * x[1])([x_inputs[0]] + [z_outputs[0]] + x3_epsilon) #?
+        x3_epsilon = [InputRandomUniform((1, 1, 1))(x3_inputs)]
+        x3 = Lambda(lambda x: x[2] * x[1] + (1.0 - x[2]) * x[0])([x_inputs[0]] + [z_outputs[0]] + x3_epsilon) #?
         x3_outputs = [self.disc([x3, x_inputs[1]])]
         
         self.disc_ext = Model(inputs=x_inputs + z_inputs + x3_inputs
@@ -207,12 +221,17 @@ class AbstractGAN(ABC):
                                     , decay=self.hps['decay'])
 
         # Make losses.
-        self.disc_ext_losses = [disc_ext_wgan_loss
-                                , disc_ext_wgan_loss
-                                , partial(disc_ext_wgan_gp_loss
+        p_disc_ext_wgan_gp_loss = partial(disc_ext_wgan_gp_loss
                                           , input_variables = x3
                                           , wgan_lambda = 10.0
-                                          , wgan_target = 1.0)]
+                                          , wgan_target = 1.0)
+        p_disc_ext_wgan_gp_loss.__name__ = 'p_disc_ext_wgan_gp_loss'
+        self.custom_objects = {}
+        self.custom_objects['p_disc_ext_wgan_gp_loss'] = p_disc_ext_wgan_gp_loss
+        
+        self.disc_ext_losses = [disc_ext_wgan_loss
+                                , disc_ext_wgan_loss
+                                , p_disc_ext_wgan_gp_loss]
         self.disc_ext_loss_weights = [-1.0, 1.0, 1.0]
 
         if hasattr(self, 'disc_ext_losses') == False \
@@ -240,7 +259,7 @@ class AbstractGAN(ABC):
         
         # Make losses.
         self.gen_disc_losses = [gen_disc_wgan_loss]
-        self.gen_disc_loss_weights = [1.0]
+        self.gen_disc_loss_weights = [-1.0]
         
         if hasattr(self, 'gen_disc_losses') == False \
             or hasattr(self, 'gen_disc_loss_weights') == False:
