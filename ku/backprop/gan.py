@@ -178,6 +178,7 @@ class AbstractGAN(ABC):
         x3_inputs = [Input(shape=(1, ))] # Trivial input.
         x3_epsilon = [InputRandomUniform((1, 1, 1))(x3_inputs)]
         x3 = Lambda(lambda x: x[2] * x[1] + (1.0 - x[2]) * x[0])([x_inputs[0]] + [z_outputs[0]] + x3_epsilon) #?
+        #x3 = Lambda(lambda x: x[0])([x_inputs[0]] + [z_outputs[0]] + x3_epsilon) #?
         x3_outputs = [self.disc([x3, x_inputs[1]])]
         
         self.disc_ext = Model(inputs=x_inputs + z_inputs + x3_inputs
@@ -191,7 +192,9 @@ class AbstractGAN(ABC):
         # Make losses.        
         self.disc_ext_losses = [disc_ext_wgan_loss
                                 , disc_ext_wgan_loss
-                                , disc_ext_wgan_gp_loss(input_variables=x3)]
+                                , disc_ext_wgan_gp_loss(input_variables=x3
+                                                        , wgan_lambda=self.conf['hps']['wgan_lambda']
+                                                        , wgan_target=self.conf['hps']['wgan_target'])]
         self.disc_ext_loss_weights = [-1.0, 1.0, 1.0]
 
         if hasattr(self, 'disc_ext_losses') == False \

@@ -33,6 +33,7 @@ from keras import callbacks as cbks, initializers
 from ku.backprop import AbstractGAN
 from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization, InputVariable
 from ku import save_model_jh5, load_model_jh5 
+from keras.layers.core import Dropout
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -226,7 +227,7 @@ class StyleGAN(AbstractGAN):
                     image = imread(os.path.join(self.raw_data_path
                                                      , 'subject_faces'
                                                      , self.db.loc[bi, 'face_file']))                    
-                    image = image = 2.0 * (image / 255 - 0.5)
+                    image = 2.0 * (image / 255 - 0.5)
                     image = resize_image(image, self.res)
                     
                     images.append(image)
@@ -238,7 +239,7 @@ class StyleGAN(AbstractGAN):
                         image = imread(os.path.join(self.raw_data_path
                                                          , 'subject_faces'
                                                          , self.db.loc[bi, 'face_file']))
-                        image = image = 2.0 * (image / 255 - 0.5)
+                        image = 2.0 * (image / 255 - 0.5)
                         image = resize_image(image, self.res)
                         
                         images.append(image)
@@ -248,7 +249,7 @@ class StyleGAN(AbstractGAN):
                         image = imread(os.path.join(self.raw_data_path
                                                          , 'subject_faces'
                                                          , self.db.loc[bi, 'face_file']))
-                        image = image = 2.0 * (image / 255 - 0.5)
+                        image = 2.0 * (image / 255 - 0.5)
                         image = resize_image(image, self.res)
                         
                         images.append(image)
@@ -337,12 +338,17 @@ class StyleGAN(AbstractGAN):
             inputs2 = Input(shape=K.int_shape(inputs1[0])[1:]) # Normal random input.
         
         dlatents2 = self.map(inputs2)
+        
+        dlatents = Lambda(lambda x: x[0] + 0.0 * x[1])([dlatents1, dlatents2])
+        
+        '''
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
         
         # Truncation trick.
         dlatents = TruncationTrick(psi=self.hps['trunc_psi']
                  , cutoff=self.hps['trunc_cutoff']
                  , momentum=self.hps['trunc_momentum'])(dlatents)
+        '''
 
         # Design the model according to the final image resolution.
         res_log2 = int(np.log2(self.syn_nn_arch['resolution']))
@@ -368,7 +374,7 @@ class StyleGAN(AbstractGAN):
                           , variable_initializer=initializers.Ones())(w)
                
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
-        x = LeakyReLU()(x)
+        x = LeakyReLU(0.2)(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -388,7 +394,7 @@ class StyleGAN(AbstractGAN):
         w = InputVariable(shape=(K.int_shape(x)[-1], )
                           , variable_initializer=initializers.Ones())(w)
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-        x = LeakyReLU()(x)
+        x = LeakyReLU(0.2)(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization. 
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -415,7 +421,7 @@ class StyleGAN(AbstractGAN):
                               , variable_initializer=initializers.Ones())(w)
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU()(x)
+            x = LeakyReLU(0.2)(x)
             x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
             dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
             dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -439,7 +445,7 @@ class StyleGAN(AbstractGAN):
                               , variable_initializer=initializers.Ones())(w) 
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU()(x)
+            x = LeakyReLU(0.2)(x)
             x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
             dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
             dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -529,7 +535,7 @@ class StyleGAN(AbstractGAN):
                           , variable_initializer=initializers.Ones())(w)
                
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
-        x = LeakyReLU()(x)
+        x = LeakyReLU(0.2)(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -549,7 +555,7 @@ class StyleGAN(AbstractGAN):
         w = InputVariable(shape=(K.int_shape(x)[-1], )
                           , variable_initializer=initializers.Ones())(w)
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-        x = LeakyReLU()(x)
+        x = LeakyReLU(0.2)(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization. 
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
         dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -576,7 +582,7 @@ class StyleGAN(AbstractGAN):
                               , variable_initializer=initializers.Ones())(w)
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU()(x)
+            x = LeakyReLU(0.2)(x)
             x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
             dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
             dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -600,7 +606,7 @@ class StyleGAN(AbstractGAN):
                               , variable_initializer=initializers.Ones())(w) 
             
             x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU()(x)
+            x = LeakyReLU(0.2)(x)
             x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
             dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
             dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
@@ -646,10 +652,10 @@ class StyleGAN(AbstractGAN):
                 if layer_idx == self.map_nn_arch['num_layers'] - 1 \
                 else self.map_nn_arch['dense1_dim']
             
-            x = LeakyReLU()(Dense(output_dim)(x))
+            x = LeakyReLU(0.2)(Dense(output_dim)(x))
                 
         output_dim = self.map_nn_arch['dlatent_dim']
-        x = LeakyReLU(name='map_output')(Dense(output_dim)(x))
+        x = LeakyReLU(0.2, name='map_output')(Dense(output_dim)(x))
         num_layers = self.syn_nn_arch['num_layers']
         output = Lambda(lambda x: K.repeat(x, num_layers))(x)
          
@@ -674,30 +680,31 @@ class StyleGAN(AbstractGAN):
         x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=1
                    , padding='same')(images) #?
-        x = LeakyReLU()(x)
+        x = LeakyReLU(0.2)(x)
                 
         # Middle layers.
         for res in range(res_log2, 2, -1):
             x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=3
                    , padding='same')(x) #?
-            x = LeakyReLU()(x)
+            x = LeakyReLU(0.2)(x)
             
             x = Conv2D(filters=self._cal_num_chs(res - 2) #?
                    , kernel_size=3
                    , padding='same')(x) #?
             x = AveragePooling2D()(x)
-            x = LeakyReLU()(x)                   
+            x = LeakyReLU(0.2)(x)                   
         
         # Layer for 4*4 size.
         res = 2
         x = Conv2D(filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=3
                    , padding='same')(x) #?
-        x = LeakyReLU()(x)
+        x = LeakyReLU(0.2)(x)
         x = Flatten()(x)
         x = Dense(self._cal_num_chs(res - 2))(x)
-        x = LeakyReLU()(x)
+        x = LeakyReLU(0.2)(x)
+        x = Dropout(rate=self.disc_nn_arch['dropout_rate'])(x)
         x = Dense(1)(x)
         
         # Last layer.        
@@ -1009,10 +1016,10 @@ class StyleGAN(AbstractGAN):
             if self.conf['multi_gpu']:
                 callback_metrics_disc_ext =  self.disc_ext_p.metrics_names if hasattr(self.disc_ext_p, 'metrics_names') else []
                 self.disc_ext_p.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'])]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=[])] #'loss', 'real_loss', 'fake_loss', 'gp_loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss']))
+                                                         , stateful_metrics=[])) #'loss', 'real_loss', 'fake_loss', 'gp_loss'])]
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext_p.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -1024,10 +1031,10 @@ class StyleGAN(AbstractGAN):
             else:
                 callback_metrics_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
                 self.disc_ext.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss'])]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=[])] #'loss', 'real_loss', 'fake_loss', 'gp_loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss', 'real_loss', 'fake_loss', 'gp_loss']))
+                                                         , stateful_metrics=[])) #'loss', 'real_loss', 'fake_loss', 'gp_loss'])]
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -1041,10 +1048,10 @@ class StyleGAN(AbstractGAN):
             if self.conf['multi_gpu']:
                 callback_metrics_gen_disc = self.gen_disc_p.metrics_names if hasattr(self.gen_disc_p, 'metrics_names') else []
                 self.gen_disc_p.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'])]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=[])] #'loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss']))
+                                                         , stateful_metrics=[])) #'loss']))
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc_p.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
@@ -1056,10 +1063,10 @@ class StyleGAN(AbstractGAN):
             else:
                 callback_metrics_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
                 self.gen_disc.history = cbks.History()
-                _callbacks = [cbks.BaseLogger(stateful_metrics=['loss'])]
+                _callbacks = [cbks.BaseLogger(stateful_metrics=[])] #'loss'])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=['loss']))
+                                                         , stateful_metrics=[])) #'loss']))
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
@@ -1096,10 +1103,10 @@ class StyleGAN(AbstractGAN):
                         
                         # x_tilda.
                         if self.nn_arch['label_usage']:
-                            z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])] \
+                            z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
                                 + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
                         else:
-                            z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])]
+                            z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
                             
                         z_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
              
@@ -1150,10 +1157,10 @@ class StyleGAN(AbstractGAN):
                     callbacks_gen_disc.on_batch_begin(s_i, batch_logs)
 
                     if self.nn_arch['label_usage']:
-                        z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])] \
+                        z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
                                 + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
                     else:
-                        z_inputs_b = [np.random.rand(num_samples, self.map_nn_arch['latent_dim'])]
+                        z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
                     
                     z_p_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
                     
@@ -1190,7 +1197,18 @@ class StyleGAN(AbstractGAN):
                     
                 callbacks_disc_ext.on_epoch_end(e_i, epochs_log)
                 callbacks_gen_disc.on_epoch_end(e_i, epochs_log)
-        
+                
+                # Save models.
+                with CustomObjectScope(self.custom_objects):
+                    self.disc_ext.save(self.DISC_EXT_PATH)
+                    self.gen_disc.save(self.GEN_DISC_PATH)
+                
+                # Save sample images.
+                res = self.generate(np.random.rand(1,32), np.random.randint(70000, size=1))
+                sample = res[0]
+                sample = np.squeeze(sample)
+                imsave('sample_' + str(e_i) + '.png', sample)
+                
             callbacks_disc_ext.on_train_end() #?
             callbacks_gen_disc.on_train_end() #?  
         finally:
@@ -1199,11 +1217,6 @@ class StyleGAN(AbstractGAN):
                     enq.stop()
             finally:
                 pass
-
-        # Save models.
-        with CustomObjectScope(self.custom_objects):
-            self.disc_ext.save(self.DISC_EXT_PATH)
-            self.gen_disc.save(self.GEN_DISC_PATH)
 
         if self.conf['multi_gpu']:
             return self.disc_ext_p.history, self.gen_disc_p.history
@@ -1227,9 +1240,9 @@ class StyleGAN(AbstractGAN):
             # Create normal random inputs.
             internal_inputs = []
             internal_inputs.append(np.random.normal(size=tuple([num_samples] \
-                                                               + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                                               + list(K.int_shape(self.gen_disc.inputs[2]))[1:]))) #?
                                         
-            for inp in self.disc_ext.inputs[5:]:
+            for inp in self.gen_disc.inputs[3:]:
                 if K.ndim(inp) == 4:
                     internal_inputs.append(np.random.normal(size=tuple([num_samples] \
                                                                + list(K.int_shape(inp)[1:]))))
@@ -1251,9 +1264,9 @@ class StyleGAN(AbstractGAN):
             # Create normal random inputs.
             internal_inputs = []
             internal_inputs.append(np.random.normal(size=tuple([num_samples] \
-                                                               + list(K.int_shape(self.disc_ext.inputs[4]))[1:])))
+                                                               + list(K.int_shape(self.gen_disc.inputs[2]))[1:]))) #?
                                         
-            for inp in self.disc_ext.inputs[5:]:
+            for inp in self.gen_disc.inputs[3:]:
                 if K.ndim(inp) == 4:
                     internal_inputs.append(np.random.normal(size=tuple([num_samples] \
                                                                + list(K.int_shape(inp)[1:]))))
@@ -1272,7 +1285,8 @@ class StyleGAN(AbstractGAN):
                 else:
                     s_images = self.gen.predict([latents] + internal_inputs)
         
-        return (s_images * 0.5 + 0.5) * 255.0
+        s_images[0] = (s_images[0] * 0.5 + 0.5) #Label?
+        return s_images 
                 
 def main():
     """Main."""
