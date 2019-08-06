@@ -5,3 +5,7 @@ from .loss import disc_ext_regular_loss1
 from .loss import disc_ext_regular_loss2
 from .loss import disc_ext_wgan_loss
 from .loss import disc_ext_wgan_gp_loss
+from .loss import softplus_non_sat_loss
+from .loss import softplus_loss
+from .loss import r_penalty_loss
+from .loss import softplus_non_sat_r_penalty_loss

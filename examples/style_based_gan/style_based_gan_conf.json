@@ -4,31 +4,32 @@
 	"model_loading" : false,
 	"multi_gpu" : false,
 	"num_gpus" : 4,
-	"gan_mode": 1,
+	"gan_mode": 2,
 	"hps" : {
-		"lr" : 0.001,
-		"beta_1" : 0.5,
+		"lr" : 0.0015,
+		"beta_1" : 0.0,
 		"beta_2" : 0.99,
 		"decay" : 0.0,
-		"epochs" : 1,
-		"batch_step" : 1000,
-		"disc_k_step" : 5,
-		"mini_batch_size" :32,
+		"epochs" : 3,
+		"batch_step" : 10000,
+		"disc_k_step" : 1,
+		"mini_batch_size" : 128,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
-		"trunc_momentum" : 0.99
+		"trunc_momentum" : 0.99,
+		"r_gamma": 10.0
 	},
 	"nn_arch" : {
-		"label_usage" : true
+		"label_usage" : true 
 	},
 	"map_hps" : {
 	},	
 	"map_nn_arch" : {
-		"latent_dim" : 128,
-		"dense1_dim" : 128,
+		"latent_dim" : 32,
+		"dense1_dim" : 32,
 		"num_classes" : 70000,
-		"dlatent_dim" : 128,
+		"dlatent_dim" : 32,
 		"num_layers" : 8
 	},
 	"syn_hps" : {
@@ -36,10 +37,11 @@
 		"max_ch" : 64
 	},	
 	"syn_nn_arch" : {
-		"resolution" : 128
+		"resolution" : 32
 	},			
 	"disc_hps" : {
 	},	
 	"disc_nn_arch" : {
+		"dropout_rate": 1.0
 	}
 }

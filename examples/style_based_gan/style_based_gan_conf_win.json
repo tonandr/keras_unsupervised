@@ -1,25 +1,24 @@
 {
 	"mode" : "train",
 	"raw_data_path" : "D:\\topcoder\\keras_unsupervised\\examples\\style_based_gan\\resource\\thumbnails128x128",
-	"model_loading" : false,
+	"model_loading" : true,
 	"multi_gpu" : false,
 	"num_gpus" : 4,
-	"gan_mode": 1,
+	"gan_mode": 2,
 	"hps" : {
-		"lr" : 0.001,
+		"lr" : 0.0015,
 		"beta_1" : 0.0,
 		"beta_2" : 0.99,
 		"decay" : 0.0,
-		"epochs" : 5,
-		"batch_step" : 128,
-		"disc_k_step" : 5,
+		"epochs" : 3,
+		"batch_step" : 10000,
+		"disc_k_step" : 1,
 		"mini_batch_size" : 128,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
 		"trunc_momentum" : 0.99,
-		"wgan_lambda" : 10.0,
-		"wgan_target" : 1.0
+		"r_gamma": 10.0
 	},
 	"nn_arch" : {
 		"label_usage" : true 
