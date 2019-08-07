@@ -840,7 +840,7 @@ class StyleGAN(AbstractGAN):
                 _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
-                                                         , stateful_metrics=[])))
+                                                         , stateful_metrics=[]))
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc_p.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 

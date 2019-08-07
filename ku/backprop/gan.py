@@ -141,6 +141,7 @@ class AbstractGAN(ABC):
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
                
         self.gen.trainable = False
+        for layer in self.gen.layers: layer.trainable = False
         self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.name = 'disc'
@@ -174,9 +175,11 @@ class AbstractGAN(ABC):
                
         # Design and compile gen_disc.
         z_inputs = self.gen.inputs
-        self.gen.trainable = True    
+        self.gen.trainable = True
+        for layer in self.gen.layers: layer.trainable = True    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.trainable = False
+        for layer in self.disc.layers: layer.trainable = False
         z_p_outputs = [self.disc(z_outputs)]
 
         self.gen_disc = Model(inputs=z_inputs, outputs=z_p_outputs)
@@ -214,7 +217,8 @@ class AbstractGAN(ABC):
         if self.conf['multi_gpu']:
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
                
-        self.gen.trainable = False 
+        self.gen.trainable = False
+        for layer in self.gen.layers: layer.trainable = False 
         self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.name = 'disc'
@@ -259,8 +263,10 @@ class AbstractGAN(ABC):
         # Design and compile gen_disc.
         z_inputs = self.gen.inputs
         self.gen.trainable = True
+        for layer in self.gen.layers: layer.trainable = True
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.trainable = False
+        for layer in self.disc.layers: layer.trainable = False
         z_p_outputs = [self.disc(z_outputs)]
 
         self.gen_disc = Model(inputs=z_inputs, outputs=z_p_outputs)
@@ -299,6 +305,7 @@ class AbstractGAN(ABC):
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
                
         self.gen.trainable = False
+        for layer in self.gen.layers: layer.trainable = False
         self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.name = 'disc'
@@ -334,9 +341,11 @@ class AbstractGAN(ABC):
                
         # Design and compile gen_disc.
         z_inputs = self.gen.inputs
-        self.gen.trainable = True     
+        self.gen.trainable = True
+        for layer in self.gen.layers: layer.trainable = True     
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.trainable = False
+        for layer in self.disc.layers: layer.trainable = False
         z_p_outputs = [self.disc(z_outputs)]
 
         self.gen_disc = Model(inputs=z_inputs, outputs=z_p_outputs)
@@ -359,19 +368,6 @@ class AbstractGAN(ABC):
                          , loss=self.gen_disc_losses
                          , loss_weights=self.gen_disc_loss_weights)                
     
-    @abstractmethod                        
-    def fit(self, x_inputs, x_outputs):
-        """Train the GAN model.
-        
-        Parameters
-        ----------
-        x_inputs : list.
-            Training data numpy array list.
-        x_outputs : list.
-            Ground truth data numpy array list.
-        """
-        pass
-
     @abstractmethod  
     def fit_generator(self
                       , generator
