@@ -10,18 +10,21 @@
 		"beta_1" : 0.0,
 		"beta_2" : 0.99,
 		"decay" : 0.0,
-		"epochs" : 3,
-		"batch_step" : 10000,
+		"epochs" : 30,
+		"batch_step" : 256,
 		"disc_k_step" : 1,
 		"mini_batch_size" : 128,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
 		"trunc_momentum" : 0.99,
-		"r_gamma": 10.0
+		"r_gamma": 10.0,
+		"ch_base" : 1024,
+		"max_ch" : 64 
 	},
 	"nn_arch" : {
-		"label_usage" : true 
+		"label_usage" : true,
+		"resolution" : 64
 	},
 	"map_hps" : {
 	},	
@@ -31,17 +34,10 @@
 		"num_classes" : 70000,
 		"dlatent_dim" : 32,
 		"num_layers" : 8
-	},
-	"syn_hps" : {
-		"ch_base" : 1024,
-		"max_ch" : 64
-	},	
-	"syn_nn_arch" : {
-		"resolution" : 32
-	},			
+	},		
 	"disc_hps" : {
 	},	
 	"disc_nn_arch" : {
-		"dropout_rate": 1.0
+		"dropout_rate": 0.4
 	}
 }

@@ -144,6 +144,8 @@ class AbstractGAN(ABC):
         for layer in self.gen.layers: layer.trainable = False
         self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
+        self.disc.trainable = True
+        for layer in self.disc.layers: layer.trainable = True
         self.disc.name = 'disc'
         x2_outputs = [self.disc(z_outputs)]
         
@@ -218,9 +220,11 @@ class AbstractGAN(ABC):
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
                
         self.gen.trainable = False
-        for layer in self.gen.layers: layer.trainable = False 
+        for layer in self.gen.layers: layer.trainable = False
         self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
+        self.disc.trainable = True
+        for layer in self.disc.layers: layer.trainable = True 
         self.disc.name = 'disc'
         x2_outputs = [self.disc(z_outputs)]
         
@@ -303,16 +307,19 @@ class AbstractGAN(ABC):
         
         if self.conf['multi_gpu']:
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
-               
+
+        self.gen.name ='gen'                  
         self.gen.trainable = False
         for layer in self.gen.layers: layer.trainable = False
-        self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
+
         self.disc.name = 'disc'
+        self.disc.trainable = True
+        for layer in self.disc.layers: layer.trainable = True
         x2_outputs = [self.disc(z_outputs)]
                 
         self.disc_ext = Model(inputs=x_inputs + z_inputs
-                              , outputs=x_outputs + x2_outputs)        
+                              , outputs=x_outputs +  x_outputs + x2_outputs)        
     
         opt = optimizers.Adam(lr=self.hps['lr']
                                     , beta_1=self.hps['beta_1']
@@ -320,10 +327,11 @@ class AbstractGAN(ABC):
                                     , decay=self.hps['decay'])
 
         # Make losses.        
-        self.disc_ext_losses = [softplus_non_sat_r_penalty_loss(input_variables = x_inputs[0] 
+        self.disc_ext_losses = [softplus_non_sat_loss
+                                , r_penalty_loss(input_variables = x_inputs[0] 
                                                         , r_gamma=self.conf['hps']['r_gamma'])
                                 , softplus_loss]
-        self.disc_ext_loss_weights = [1.0, 1.0]
+        self.disc_ext_loss_weights = [1.0, 1.0, 1.0]
 
         if hasattr(self, 'disc_ext_losses') == False \
             or hasattr(self, 'disc_ext_loss_weights') == False:
@@ -344,6 +352,7 @@ class AbstractGAN(ABC):
         self.gen.trainable = True
         for layer in self.gen.layers: layer.trainable = True     
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
+        
         self.disc.trainable = False
         for layer in self.disc.layers: layer.trainable = False
         z_p_outputs = [self.disc(z_outputs)]

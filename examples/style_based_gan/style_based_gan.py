@@ -21,7 +21,7 @@ from skimage.io import imread, imsave
 import cv2 as cv
 
 from keras.models import Model
-from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply
+from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, Dropout
 from keras.layers import LeakyReLU, Conv2D, Conv2DTranspose, Activation, AveragePooling2D
 import keras.backend as K 
 from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
@@ -32,7 +32,10 @@ from keras import callbacks as cbks, initializers
 
 from ku.backprop import AbstractGAN
 from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization, InputVariable
-from keras.layers.core import Dropout
+from ku.layer_ext import EqualizedLRDense, EqualizedLRConv2D
+from ku.layer_ext.convolution import FusedConv2DTranspose, BlurDepthwiseConv2D,\
+    FusedConv2D
+from keras.layers.convolutional import UpSampling2D
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -76,7 +79,7 @@ def resize_image(image, res):
             pad_b = pad // 2 + 1
 
         image = cv.resize(image, (w_p, h_p), interpolation=cv.INTER_CUBIC)
-        image = cv.copyMakeBorder(image, pad_t, pad_b, 0, 0, cv.BORDER_CONSTANT, value=[0, 0, 0]) # 416x416?  
+        image = cv.copyMakeBorder(image, pad_t, pad_b, 0, 0, cv.BORDER_CONSTANT, value=[0, 0, 0]) 
     else:
         h_p = res
         w_p = int(w / h * res)
@@ -90,7 +93,7 @@ def resize_image(image, res):
             pad_r = pad // 2 + 1                
         
         image = cv.resize(image, (w_p, h_p), interpolation=cv.INTER_CUBIC)
-        image = cv.copyMakeBorder(image, 0, 0, pad_l, pad_r, cv.BORDER_CONSTANT, value=[0, 0, 0]) # 416x416? 
+        image = cv.copyMakeBorder(image, 0, 0, pad_l, pad_r, cv.BORDER_CONSTANT, value=[0, 0, 0])
     
     return image
 
@@ -271,11 +274,9 @@ class StyleGAN(AbstractGAN):
         
         self.map_hps = conf['map_hps']
         self.map_nn_arch = conf['map_nn_arch']
-        self.syn_hps = conf['syn_hps']
-        self.syn_nn_arch = conf['syn_nn_arch']
         
-        self.disc_hps = conf['disc_hps'] #?
-        self.disc_nn_arch = conf['disc_nn_arch'] #?
+        self.disc_hps = conf['disc_hps']
+        self.disc_nn_arch = conf['disc_nn_arch']
         
         # Create models.
         if self.conf['model_loading'] != True:
@@ -311,15 +312,14 @@ class StyleGAN(AbstractGAN):
             Number of channels for each layer.
                 integer
         """
-        return int(np.min([int(self.syn_hps['ch_base']) / (2.0 ** layer_idx)
-                           , self.syn_hps['max_ch']]))
+        return int(np.min([int(self.hps['ch_base']) / (2.0 ** layer_idx)
+                           , self.hps['max_ch']]))
         
     def _create_generator(self):
         """Create generator."""
         
         # Design generator.
-        # Mapping network and synthesis layer.
-        self._create_synthesizer()
+        # Mapping network.
         self._create_mapping_net()
         
         # Inputs.
@@ -339,50 +339,93 @@ class StyleGAN(AbstractGAN):
         
         dlatents2 = self.map(inputs2)
         
-        dlatents = Lambda(lambda x: x[0] + 0.0 * x[1])([dlatents1, dlatents2])
-        
-        '''
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
         
         # Truncation trick.
         dlatents = TruncationTrick(psi=self.hps['trunc_psi']
                  , cutoff=self.hps['trunc_cutoff']
                  , momentum=self.hps['trunc_momentum'])(dlatents)
-        '''
 
         # Design the model according to the final image resolution.
-        res_log2 = int(np.log2(self.syn_nn_arch['resolution']))
-        assert self.syn_nn_arch['resolution'] == 2 ** res_log2 and self.syn_nn_arch['resolution'] >= 4 #?
-        self.syn_nn_arch['num_layers'] = res_log2 * 2 - 2
+        res_log2 = int(np.log2(self.nn_arch['resolution']))
+        assert self.nn_arch['resolution'] == 2 ** res_log2 and self.nn_arch['resolution'] >= 4 #?
+        self.nn_arch['num_layers'] = res_log2 * 2 - 2
         internal_inputs = []
                 
         # The first constant input layer.
         res = 2
         layer_idx = 0
         
-        # Inputs.
-        x = Input(shape=(1,))
-        n = Input(shape=tuple([4, 4, self._cal_num_chs(res - 1)])) # Random noise input.
-        w = Input(shape=(1,))
-        internal_inputs.append(x)
-        internal_inputs.append(n)
-        internal_inputs.append(w)
-        
         # Input variables.
-        x = InputVariable(shape=tuple([4, 4, self._cal_num_chs(res - 1)]))(x)        
-        w = InputVariable(shape=(K.int_shape(x)[-1], )
-                          , variable_initializer=initializers.Ones())(w)
-               
-        x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
-        x = LeakyReLU(0.2)(x)
-        x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-        dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-        dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-        x = AdaptiveINWithStyle()([x, dlatents_p]) #?
+        x = Input(shape=(1,))
+        internal_inputs.append(x)
+        x = InputVariable(shape=tuple([4, 4, self._cal_num_chs(res - 1)]))(x)
+        x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
         
         layer_idx +=1
-        x = Conv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
+        x = EqualizedLRConv2D(input_shape=K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
+        x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
         
+        # Middle layers.
+        res = 3
+        while res <= res_log2:
+            layer_idx = res * 2 - 3
+            
+            if np.min(K.int_shape(x)[2:]) * 2 >= 128: #?    
+                x = FusedConv2DTranspose(filters=self._cal_num_chs(res - 1)
+                                    , kernel_size=3 #?
+                                    , strides=2
+                                    , padding='same')(x)
+            else:
+                x = UpSampling2D(size=(2, 2), interpolation='bilinear')(x)
+                x = EqualizedLRConv2D(input_shape=K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
+            
+            x = BlurDepthwiseConv2D()(x)        
+            x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
+            
+            layer_idx = res * 2 - 4            
+            x = EqualizedLRConv2D(input_shape=K.int_shape(x)
+                       , filters=self._cal_num_chs(res - 1)
+                       , kernel_size=3
+                       , strides=1
+                       , padding='same')(x)
+            x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
+            
+            res +=1
+        
+        # Last layer.
+        output1 = EqualizedLRConv2D(input_shape=K.int_shape(x)
+                        , filters=3
+                        , kernel_size=1
+                        , strides=1
+                        , activation='tanh'
+                        , padding='same')(x)
+
+        if self.nn_arch['label_usage']:
+            self.gen = Model(inputs=inputs1 + [inputs2[0]] + internal_inputs, outputs=[output1, output2], name='gen')
+        else:
+            self.gen = Model(inputs=[inputs1, inputs2] + internal_inputs, outputs=[output1], name='gen')
+
+    def _gen_final_layer_block(self, x, dlatents, layer_idx, internal_inputs):
+        """ Generator's final layer block. 
+        
+        Parameters
+        ----------
+        x: Tensor.
+            Input tensor.
+        dlatents: Tensor.
+            Disentangeled latent tensor.
+        layer_idx: Integer.
+            Layer index.
+        internal_inputs: List.
+            Internal input tensor list.
+        
+        Returns
+        -------
+        Final layer's tensor.
+            Tensor.
+        """
+ 
         # Inputs.
         n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
         w = Input(shape=(1,))
@@ -392,244 +435,20 @@ class StyleGAN(AbstractGAN):
         
         # Input variables.
         w = InputVariable(shape=(K.int_shape(x)[-1], )
-                          , variable_initializer=initializers.Ones())(w)
+                          , variable_initializer=initializers.Ones())(w) 
+        
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-        x = LeakyReLU(0.2)(x)
-        x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization. 
-        dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-        dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-        x = AdaptiveINWithStyle()([x, dlatents_p])
-        
-        # Middle layers.
-        res = 3
-        while res <= res_log2:
-            layer_idx = res * 2 - 3
-            x = Conv2DTranspose(filters=self._cal_num_chs(res - 1) #?
-                                , kernel_size=3
-                                , strides=2
-                                , padding='same')(x) # Blur?
-                                
-            # Inputs.
-            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
-            w = Input(shape=(1,))
-    
-            internal_inputs.append(n)
-            internal_inputs.append(w)
-            
-            # Input variables.
-            w = InputVariable(shape=(K.int_shape(x)[-1], )
-                              , variable_initializer=initializers.Ones())(w)
-            
-            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU(0.2)(x)
-            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-            dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-            dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-            x = AdaptiveINWithStyle()([x, dlatents_p])
-            
-            layer_idx = res * 2 - 4            
-            x = Conv2D(filters=self._cal_num_chs(res - 1)
-                       , kernel_size=3
-                       , strides=1
-                       , padding='same')(x)
-        
-            # Inputs.
-            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
-            w = Input(shape=(1,))
-    
-            internal_inputs.append(n)
-            internal_inputs.append(w)
-            
-            # Input variables.
-            w = InputVariable(shape=(K.int_shape(x)[-1], )
-                              , variable_initializer=initializers.Ones())(w) 
-            
-            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU(0.2)(x)
-            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-            dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-            dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-            x = AdaptiveINWithStyle()([x, dlatents_p])
-            
-            res +=1
-        
-        # Last layer.
-        output1 = Conv2D(filters=3
-                        , kernel_size=1
-                        , strides=1
-                        , activation='tanh'
-                        , padding='same')(x)
-
-        if self.nn_arch['label_usage']:
-            self.gen = Model(inputs=inputs1 + [inputs2[0]] + internal_inputs, outputs=[output1, output2], name='gen') #?
-        else:
-            self.gen = Model(inputs=[inputs1, inputs2] + internal_inputs, outputs=[output1], name='gen') #?
-
-    '''
-    def _create_generator(self):
-        """Create generator."""
-        # Design generator.
-        # Mapping network and synthesis layer.
-        self._create_synthesizer()
-        self._create_mapping_net()
-        
-        # Inputs.
-        inputs1 = self.map.inputs
-        
-        if self.nn_arch['label_usage']:
-            output2 = Lambda(lambda x: x)(inputs1[1]) 
-        
-        # Disentangled latent.
-        dlatents1 = self.map(inputs1)
-    
-        # Style mixing regularization.
-        if self.nn_arch['label_usage']:
-            inputs2 = [Input(shape=K.int_shape(inputs1[0])[1:]), inputs1[1]] # Normal random input.
-        else:
-            inputs2 = Input(shape=K.int_shape(inputs1[0])[1:]) # Normal random input.
-        
-        dlatents2 = self.map(inputs2)
-        dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
-        
-        # Truncation trick.
-        dlatents = TruncationTrick(psi=self.hps['trunc_psi']
-                 , cutoff=self.hps['trunc_cutoff']
-                 , momentum=self.hps['trunc_momentum'])(dlatents)
-
-        output1 = self.syn([dlatents] + self.syn.inputs[1:]) #?
-        
-        if self.nn_arch['label_usage']:
-            self.gen = Model(inputs=inputs1 + [inputs2[0]] + self.syn.inputs[1:], outputs=[output1, output2], name='gen') #?
-        else:
-            self.gen = Model(inputs=[inputs1, inputs2] + self.syn.inputs[1:], outputs=[output1], name='gen') #?
-    '''
-
-    def _create_synthesizer(self):
-        """Create synthesis model."""
-        
-        # Check exception.?        
-        # Design the model according to the final image resolution.
-        res_log2 = int(np.log2(self.syn_nn_arch['resolution']))
-        assert self.syn_nn_arch['resolution'] == 2 ** res_log2 and self.syn_nn_arch['resolution'] >= 4 #?
-        self.syn_nn_arch['num_layers'] = res_log2 * 2 - 2
-        internal_inputs = []
-        
-        # Disentangled latent inputs.
-        dlatents = Input(shape=(self.syn_nn_arch['num_layers'], self.map_nn_arch['dlatent_dim']))
-        
-        # The first constant input layer.
-        res = 2
-        layer_idx = 0
-        
-        # Inputs.
-        x = Input(shape=(1,))
-        n = Input(shape=tuple([4, 4, self._cal_num_chs(res - 1)])) # Random noise input.
-        w = Input(shape=(1,))
-        internal_inputs.append(x)
-        internal_inputs.append(n)
-        internal_inputs.append(w)
-        
-        # Input variables.
-        x = InputVariable(shape=tuple([4, 4, self._cal_num_chs(res - 1)]))(x)        
-        w = InputVariable(shape=(K.int_shape(x)[-1], )
-                          , variable_initializer=initializers.Ones())(w)
-               
-        x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting?
         x = LeakyReLU(0.2)(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-        dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-        x = AdaptiveINWithStyle()([x, dlatents_p]) #?
+        dlatents_p = EqualizedLRDense(input_shape=K.int_shape(dlatents_p), K.int_shape(x)[-1] * 2)(dlatents_p) #?
+        x = AdaptiveINWithStyle()([x, dlatents_p])       
         
-        layer_idx +=1
-        x = Conv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
-        
-        # Inputs.
-        n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
-        w = Input(shape=(1,))
-
-        internal_inputs.append(n)
-        internal_inputs.append(w)
-        
-        # Input variables.
-        w = InputVariable(shape=(K.int_shape(x)[-1], )
-                          , variable_initializer=initializers.Ones())(w)
-        x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-        x = LeakyReLU(0.2)(x)
-        x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization. 
-        dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-        dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-        x = AdaptiveINWithStyle()([x, dlatents_p])
-        
-        # Middle layers.
-        res = 3
-        while res <= res_log2:
-            layer_idx = res * 2 - 3
-            x = Conv2DTranspose(filters=self._cal_num_chs(res - 1) #?
-                                , kernel_size=3
-                                , strides=2
-                                , padding='same')(x) # Blur?
-                                
-            # Inputs.
-            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
-            w = Input(shape=(1,))
-    
-            internal_inputs.append(n)
-            internal_inputs.append(w)
-            
-            # Input variables.
-            w = InputVariable(shape=(K.int_shape(x)[-1], )
-                              , variable_initializer=initializers.Ones())(w)
-            
-            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU(0.2)(x)
-            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-            dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-            dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-            x = AdaptiveINWithStyle()([x, dlatents_p])
-            
-            layer_idx = res * 2 - 4            
-            x = Conv2D(filters=self._cal_num_chs(res - 1)
-                       , kernel_size=3
-                       , strides=1
-                       , padding='same')(x)
-        
-            # Inputs.
-            n = Input(shape=K.int_shape(x)[1:]) # Random noise input.
-            w = Input(shape=(1,))
-    
-            internal_inputs.append(n)
-            internal_inputs.append(w)
-            
-            # Input variables.
-            w = InputVariable(shape=(K.int_shape(x)[-1], )
-                              , variable_initializer=initializers.Ones())(w) 
-            
-            x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
-            x = LeakyReLU(0.2)(x)
-            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
-            dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-            dlatents_p = Dense(K.int_shape(x)[-1] * 2)(dlatents_p)
-            x = AdaptiveINWithStyle()([x, dlatents_p])
-            
-            res +=1
-        
-        # Last layer.
-        output = Conv2D(filters=3
-                        , kernel_size=1
-                        , strides=1
-                        , activation='tanh'
-                        , padding='same')(x)
-                        
-        self.syn = Model(inputs=[dlatents] + internal_inputs, outputs=[output], name='syn') #?
-                         
+        return x
+                                 
     def _create_mapping_net(self):
         """Create mapping network."""
-        
-        # Check exception.
-        if hasattr(self, 'syn') != True:
-            raise RuntimeError('Synthesizer must be created before.')        
-        
+                
         # Design mapping network.
         # Inputs.
         noises = Input(shape=(self.map_nn_arch['latent_dim'], ))
@@ -656,7 +475,7 @@ class StyleGAN(AbstractGAN):
                 
         output_dim = self.map_nn_arch['dlatent_dim']
         x = LeakyReLU(0.2, name='map_output')(Dense(output_dim)(x))
-        num_layers = self.syn_nn_arch['num_layers']
+        num_layers = self.nn_arch['num_layers']
         output = Lambda(lambda x: K.repeat(x, num_layers))(x)
          
         self.map = Model(inputs=[noises, labels] if self.nn_arch['label_usage'] else [noises]
@@ -664,7 +483,7 @@ class StyleGAN(AbstractGAN):
 
     def _create_discriminator(self):
         """Create the discriminator."""
-        res = self.syn_nn_arch['resolution'] #?
+        res = self.nn_arch['resolution'] #?
         
         # Design the model according to the final image resolution.
         res_log2 = int(np.log2(res))
@@ -677,35 +496,46 @@ class StyleGAN(AbstractGAN):
         
         # First layer.
         res = res_log2
-        x = Conv2D(filters=self._cal_num_chs(res - 1) #?
+        x = EqualizedLRConv2D(input_shape=K.int_shape(images)
+                   , filters=self._cal_num_chs(res - 1)
                    , kernel_size=1
-                   , padding='same')(images) #?
+                   , padding='same')(images)
         x = LeakyReLU(0.2)(x)
                 
         # Middle layers.
         for res in range(res_log2, 2, -1):
-            x = Conv2D(filters=self._cal_num_chs(res - 1) #?
+            x = EqualizedLRConv2D(input_shape=K.int_shape(x)
+                   , filters=self._cal_num_chs(res - 1)
                    , kernel_size=3
-                   , padding='same')(x) #?
+                   , padding='same')(x)
             x = LeakyReLU(0.2)(x)
             
-            x = Conv2D(filters=self._cal_num_chs(res - 2) #?
+            x = BlurDepthwiseConv2D()(x)
+            if np.min(K.int_shape(x)[2:]) * 2 >= 128: #?  
+                x = FusedConv2D(filters=self._cal_num_chs(res - 2)
+                                , kernel_size=3
+                                , padding='same')(x)
+            else:
+                x = EqualizedLRConv2D(input_shape=K.int_shape(x)
+                   , filters=self._cal_num_chs(res - 2)
                    , kernel_size=3
                    , padding='same')(x) #?
-            x = AveragePooling2D()(x)
+                x = AveragePooling2D()(x)    
+            
             x = LeakyReLU(0.2)(x)                   
         
         # Layer for 4*4 size.
         res = 2
-        x = Conv2D(filters=self._cal_num_chs(res - 1) #?
+        x = EqualizedLRConv2D(input_shape=K.int_shape(x)
+                   , filters=self._cal_num_chs(res - 1) #?
                    , kernel_size=3
                    , padding='same')(x) #?
         x = LeakyReLU(0.2)(x)
         x = Flatten()(x)
-        x = Dense(self._cal_num_chs(res - 2))(x)
+        x = EqualizedLRDense(input_shape=K.int_shape(x), self._cal_num_chs(res - 2))(x)
         x = LeakyReLU(0.2)(x)
         x = Dropout(rate=self.disc_nn_arch['dropout_rate'])(x)
-        x = Dense(1)(x)
+        x = EqualizedLRDense(input_shape=K.int_shape(x), 1)(x)
         
         # Last layer.        
         if self.nn_arch['label_usage']:
@@ -724,13 +554,13 @@ class StyleGAN(AbstractGAN):
         '''
         generator = self.TrainingSequenceUCCS(self.raw_data_path
                                               , self.hps
-                                              , self.syn_nn_arch['resolution']
+                                              , self.nn_arch['resolution']
                                               , batch_shuffle=True)
         '''
         
         generator = self.TrainingSequenceFFHQ(self.raw_data_path
                                               , self.hps
-                                              , self.syn_nn_arch['resolution']
+                                              , self.nn_arch['resolution']
                                               , batch_shuffle=True)        
         
         # Train.
@@ -930,15 +760,16 @@ class StyleGAN(AbstractGAN):
                         
                         if self.conf['multi_gpu']:
                             outs = self.disc_ext_p.train_on_batch(x_inputs_b + z_inputs_b + internal_inputs
-                                     , x_outputs_b + z_outputs_b) #?                    
+                                     , x_outputs_b + x_outputs_b + z_outputs_b) #?                    
                         else:
                             outs = self.disc_ext.train_on_batch(x_inputs_b + z_inputs_b + internal_inputs
-                                     , x_outputs_b + z_outputs_b) #?  
+                                     , x_outputs_b + x_outputs_b + z_outputs_b) #?  
 
+                        del x_inputs_b, z_inputs_b, internal_inputs, x_outputs_b, z_outputs_b
                         #print(s_i, self.map.get_weights()[0])
                         outs = to_list(outs) #?
                         
-                        metric_names = ['loss', 'real_loss', 'fake_loss'] #?                             
+                        metric_names = ['loss', 'real_loss', 'r_penalty_loss', 'fake_loss'] #?                             
                             
                         for l, o in zip(metric_names, outs):
                             k_batch_logs[l] = o                        
@@ -996,6 +827,8 @@ class StyleGAN(AbstractGAN):
                     else:
                         outs = self.gen_disc.train_on_batch(z_inputs_b + internal_inputs, z_p_outputs_b)
 
+                    del z_inputs_b, internal_inputs, z_p_outputs_b
+
                     outs = to_list(outs)
                     
                     if self.conf['multi_gpu']:
@@ -1017,7 +850,7 @@ class StyleGAN(AbstractGAN):
                     self.gen_disc.save(self.GEN_DISC_PATH)
                 
                 # Save sample images.
-                res = self.generate(np.random.rand(1, self.syn_nn_arch['resolution'])
+                res = self.generate(np.random.rand(1, self.map_nn_arch['latent_dim'])
                                     , np.random.randint(self.map_nn_arch['num_classes'], size=1))
                 sample = res[0]
                 sample = np.squeeze(sample)
