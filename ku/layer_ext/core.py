@@ -20,7 +20,7 @@ from ku.backend_ext import tensorflow_backend as Ke
 class EqualizedLRDense(Dense):
     """Equalized learning rate dense layer."""
     
-    def __init__(self, input_shape,
+    def __init__(self, in_shape,
                  units,
                  activation=None,
                  use_bias=True,
@@ -34,14 +34,14 @@ class EqualizedLRDense(Dense):
                  gain=np.sqrt(2), 
                  lrmul=1, 
                  **kwargs):
-        self.input_shape = input_shape
+        self.in_shape = in_shape
         self.gain = gain
         self.lrmul = lrmul
         
-        he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        he_std = self.gain / np.sqrt(np.prod(in_shape[1:], axis=-1)) #?
         init_std = 1.0 / self.lrmul
         runtime_coeff = he_std * self.lrmul
-        kernel_initializer = initializers.random_normal(0, init_std) * runtime_coeff
+        kernel_initializer = initializers.random_normal(0, init_std * runtime_coeff)
         
         super(EqualizedLRDense, self).__init__(units,
                  activation=activation,
@@ -55,16 +55,13 @@ class EqualizedLRDense(Dense):
                  bias_constraint=bias_constraint, 
                  **kwargs)
 
-    def build(self, input_shape):
-        super(EqualizedLRDense, self).build(input_shape)
+    def build(self, in_shape):
+        super(EqualizedLRDense, self).build(in_shape)
         
     def get_config(self):
-        config = {'input_shape': self.input_shape
+        config = {'in_shape': self.in_shape
                   , 'gain': self.gain
                   , 'lrmul': self.lrmul
         }
         base_config = super(EqualizedLRDense, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
-    def compute_output_shape(self, input_shape):
-        return tuple([input_shape[0]] + list(self.shape))

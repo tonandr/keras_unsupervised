@@ -319,6 +319,10 @@ class StyleGAN(AbstractGAN):
         """Create generator."""
         
         # Design generator.
+        res_log2 = int(np.log2(self.nn_arch['resolution']))
+        assert self.nn_arch['resolution'] == 2 ** res_log2 and self.nn_arch['resolution'] >= 4 #?
+        self.nn_arch['num_layers'] = res_log2 * 2 - 2
+        
         # Mapping network.
         self._create_mapping_net()
         
@@ -347,9 +351,6 @@ class StyleGAN(AbstractGAN):
                  , momentum=self.hps['trunc_momentum'])(dlatents)
 
         # Design the model according to the final image resolution.
-        res_log2 = int(np.log2(self.nn_arch['resolution']))
-        assert self.nn_arch['resolution'] == 2 ** res_log2 and self.nn_arch['resolution'] >= 4 #?
-        self.nn_arch['num_layers'] = res_log2 * 2 - 2
         internal_inputs = []
                 
         # The first constant input layer.
@@ -363,13 +364,13 @@ class StyleGAN(AbstractGAN):
         x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
         
         layer_idx +=1
-        x = EqualizedLRConv2D(input_shape=K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
+        x = EqualizedLRConv2D(K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
         x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
         
         # Middle layers.
         res = 3
         while res <= res_log2:
-            layer_idx = res * 2 - 3
+            layer_idx = res * 2 - 4
             
             if np.min(K.int_shape(x)[2:]) * 2 >= 128: #?    
                 x = FusedConv2DTranspose(filters=self._cal_num_chs(res - 1)
@@ -378,25 +379,24 @@ class StyleGAN(AbstractGAN):
                                     , padding='same')(x)
             else:
                 x = UpSampling2D(size=(2, 2), interpolation='bilinear')(x)
-                x = EqualizedLRConv2D(input_shape=K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
+                x = EqualizedLRConv2D(K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
             
-            x = BlurDepthwiseConv2D()(x)        
+            #x = BlurDepthwiseConv2D(padding='same')(x) #?     
             x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
             
-            layer_idx = res * 2 - 4            
-            x = EqualizedLRConv2D(input_shape=K.int_shape(x)
-                       , filters=self._cal_num_chs(res - 1)
-                       , kernel_size=3
-                       , strides=1
+            layer_idx = res * 2 - 3            
+            x = EqualizedLRConv2D(K.int_shape(x)
+                       , self._cal_num_chs(res - 1)
+                       , 3
                        , padding='same')(x)
             x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
             
             res +=1
         
         # Last layer.
-        output1 = EqualizedLRConv2D(input_shape=K.int_shape(x)
-                        , filters=3
-                        , kernel_size=1
+        output1 = EqualizedLRConv2D(K.int_shape(x)
+                        , 3
+                        , 1
                         , strides=1
                         , activation='tanh'
                         , padding='same')(x)
@@ -434,20 +434,21 @@ class StyleGAN(AbstractGAN):
         internal_inputs.append(w)
         
         # Input variables.
-        w = InputVariable(shape=(K.int_shape(x)[-1], )
+        w = InputVariable(shape=(K.int_shape(x)[-1],)
                           , variable_initializer=initializers.Ones())(w) 
         
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
         x = LeakyReLU(0.2)(x)
         x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-        dlatents_p = EqualizedLRDense(input_shape=K.int_shape(dlatents_p), K.int_shape(x)[-1] * 2)(dlatents_p) #?
+        dlatents_p = EqualizedLRDense(K.int_shape(dlatents_p), K.int_shape(x)[-1] * 2)(dlatents_p) #?
         x = AdaptiveINWithStyle()([x, dlatents_p])       
         
         return x
                                  
     def _create_mapping_net(self):
         """Create mapping network."""
+        assert 'num_layers' in self.nn_arch.keys()
                 
         # Design mapping network.
         # Inputs.
@@ -496,29 +497,29 @@ class StyleGAN(AbstractGAN):
         
         # First layer.
         res = res_log2
-        x = EqualizedLRConv2D(input_shape=K.int_shape(images)
-                   , filters=self._cal_num_chs(res - 1)
-                   , kernel_size=1
+        x = EqualizedLRConv2D(K.int_shape(images)
+                   , self._cal_num_chs(res - 1)
+                   , 1
                    , padding='same')(images)
         x = LeakyReLU(0.2)(x)
                 
         # Middle layers.
         for res in range(res_log2, 2, -1):
-            x = EqualizedLRConv2D(input_shape=K.int_shape(x)
-                   , filters=self._cal_num_chs(res - 1)
-                   , kernel_size=3
+            x = EqualizedLRConv2D(K.int_shape(x)
+                   , self._cal_num_chs(res - 1)
+                   , 3
                    , padding='same')(x)
             x = LeakyReLU(0.2)(x)
             
-            x = BlurDepthwiseConv2D()(x)
+            #x = BlurDepthwiseConv2D(padding='same')(x) #?
             if np.min(K.int_shape(x)[2:]) * 2 >= 128: #?  
-                x = FusedConv2D(filters=self._cal_num_chs(res - 2)
-                                , kernel_size=3
+                x = FusedConv2D(self._cal_num_chs(res - 2)
+                                , 3
                                 , padding='same')(x)
             else:
-                x = EqualizedLRConv2D(input_shape=K.int_shape(x)
-                   , filters=self._cal_num_chs(res - 2)
-                   , kernel_size=3
+                x = EqualizedLRConv2D(K.int_shape(x)
+                   , self._cal_num_chs(res - 2)
+                   , 3
                    , padding='same')(x) #?
                 x = AveragePooling2D()(x)    
             
@@ -526,16 +527,16 @@ class StyleGAN(AbstractGAN):
         
         # Layer for 4*4 size.
         res = 2
-        x = EqualizedLRConv2D(input_shape=K.int_shape(x)
-                   , filters=self._cal_num_chs(res - 1) #?
-                   , kernel_size=3
+        x = EqualizedLRConv2D(K.int_shape(x)
+                   , self._cal_num_chs(res - 1) #?
+                   , 3
                    , padding='same')(x) #?
         x = LeakyReLU(0.2)(x)
         x = Flatten()(x)
-        x = EqualizedLRDense(input_shape=K.int_shape(x), self._cal_num_chs(res - 2))(x)
+        x = EqualizedLRDense(K.int_shape(x), self._cal_num_chs(res - 2))(x)
         x = LeakyReLU(0.2)(x)
         x = Dropout(rate=self.disc_nn_arch['dropout_rate'])(x)
-        x = EqualizedLRDense(input_shape=K.int_shape(x), 1)(x)
+        x = EqualizedLRDense(K.int_shape(x), 1)(x)
         
         # Last layer.        
         if self.nn_arch['label_usage']:

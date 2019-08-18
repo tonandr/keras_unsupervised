@@ -22,10 +22,10 @@ from ku.backend_ext import tensorflow_backend as Ke
 class _EqualizedLRConv(_Conv):
     """Equalized learning rate abstract convolution layer."""
     
-    def __init__(self, input_shape
-                 , rank
+    def __init__(self, in_shape
                  , filters
                  , kernel_size
+                 , rank=None
                  , strides=1
                  , padding='valid'
                  , data_format=None
@@ -42,14 +42,14 @@ class _EqualizedLRConv(_Conv):
                  , gain=np.sqrt(2) 
                  , lrmul=1 
                  , **kwargs):
-        self.input_shape = input_shape
+        self.in_shape = in_shape
         self.gain = gain
         self.lrmul = lrmul
         
-        he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        he_std = self.gain / np.sqrt(np.prod(in_shape[1:], axis=-1)) #?
         init_std = 1.0 / self.lrmul
         runtime_coeff = he_std * self.lrmul
-        kernel_initializer = initializers.random_normal(0, init_std) * runtime_coeff
+        kernel_initializer = initializers.random_normal(0, init_std * runtime_coeff)
         
         super(_EqualizedLRConv, self).__init__(rank
                                                , filters
@@ -73,7 +73,7 @@ class _EqualizedLRConv(_Conv):
         super(_EqualizedLRConv, self).build(input_shape)
         
     def get_config(self):
-        config = {'input_shape': self.input_shape
+        config = {'in_shape': self.in_shape
                   , 'gain': self.gain
                   , 'lrmul': self.lrmul
         }
@@ -83,7 +83,7 @@ class _EqualizedLRConv(_Conv):
 class EqualizedLRConv1D(_EqualizedLRConv):
     """Equalized learning rate 1d convolution layer."""
     
-    def __init__(self, input_shape
+    def __init__(self, in_shape
                 , filters
                 , kernel_size
                 , strides=1
@@ -105,10 +105,10 @@ class EqualizedLRConv1D(_EqualizedLRConv):
         if padding == 'causal':
             if data_format != 'channels_last':
                 raise ValueError('When padding is casual, data format must be channel_last.')        
-        super(EqualizedLRConv1D, self).__init__(input_shape
-                                                , rank=1
+        super(EqualizedLRConv1D, self).__init__(in_shape
                                                 , filters 
                                                 , kernel_size
+                                                , rank=1
                                                 , strides=strides
                                                 , padding=padding
                                                 , data_format=data_format
@@ -135,7 +135,7 @@ class EqualizedLRConv1D(_EqualizedLRConv):
 class EqualizedLRConv2D(_EqualizedLRConv):
     """Equalized learning rate 2d convolution layer."""
     
-    def __init__(self, input_shape
+    def __init__(self, in_shape
                 , filters
                 , kernel_size
                 , strides=(1, 1)
@@ -154,10 +154,10 @@ class EqualizedLRConv2D(_EqualizedLRConv):
                 , gain=np.sqrt(2)
                 , lrmul=1
                 , **kwargs):    
-        super(EqualizedLRConv2D, self).__init__(input_shape
-                                                , rank=2
+        super(EqualizedLRConv2D, self).__init__(in_shape
                                                 , filters                              
                                                 , kernel_size
+                                                , rank=2
                                                 , strides=strides
                                                 , padding=padding
                                                 , data_format=data_format
@@ -184,7 +184,7 @@ class EqualizedLRConv2D(_EqualizedLRConv):
 class EqualizedLRConv3D(_EqualizedLRConv):
     """Equalized learning rate 3d convolution layer."""
     
-    def __init__(self, input_shape
+    def __init__(self, in_shape
                 , filters
                 , kernel_size
                 , strides=(1, 1, 1)
@@ -203,10 +203,10 @@ class EqualizedLRConv3D(_EqualizedLRConv):
                 , gain=np.sqrt(2) 
                 , lrmul=1 
                 , **kwargs):    
-        super(EqualizedLRConv3D, self).__init__(input_shape
-                , rank=3
+        super(EqualizedLRConv3D, self).__init__(in_shape
                 , filters
                 , kernel_size
+                , rank=3
                 , strides=strides
                 , padding=padding
                 , data_format=data_format
@@ -233,9 +233,10 @@ class EqualizedLRConv3D(_EqualizedLRConv):
 class _FusedConv(_Conv):
     """Fused abstraction convolution layer."""
     
-    def __init__(self, rank 
+    def __init__(self 
                 , filters
                 , kernel_size
+                , rank=None 
                 , strides=1
                 , padding='valid'
                 , data_format=None
@@ -348,10 +349,10 @@ class FusedConv1D(_FusedConv):
                 , kernel_constraint=None
                 , bias_constraint=None
                 , **kwargs):        
-        super(FusedConv1D, self).__init__(rank=1
-                , filters
+        super(FusedConv1D, self).__init__(filters
                 , kernel_size
                 , strides=strides
+                , rank=1
                 , padding=padding
                 , data_format=data_format
                 , dilation_rate=dilation_rate
@@ -389,9 +390,9 @@ class FusedConv2D(_FusedConv):
                 , kernel_constraint=None
                 , bias_constraint=None
                 , **kwargs):        
-        super(FusedConv2D, self).__init__(rank=2
-                , filters
+        super(FusedConv2D, self).__init__(filters
                 , kernel_size
+                , rank=2
                 , strides=strides
                 , padding=padding
                 , data_format=data_format
@@ -430,9 +431,9 @@ class FusedConv3D(_FusedConv):
                 , kernel_constraint=None
                 , bias_constraint=None
                 , **kwargs):        
-        super(FusedConv3D, self).__init__(rank=3
-                , filters
+        super(FusedConv3D, self).__init__(filters
                 , kernel_size
+                , rank=3
                 , strides=strides
                 , padding=padding
                 , data_format=data_format
@@ -547,7 +548,7 @@ class FusedConv2DTranspose(Conv2DTranspose):
             return self.activation(outputs)
         return outputs
 
-class BlurDepthwiseConv2D(DepthwiseConv2D):
+class BlurDepthwiseConv2D(DepthwiseConv2D): #?
     """Blur 2d depthwise convolution layer."""
     
     def __init__(self
@@ -600,13 +601,13 @@ class BlurDepthwiseConv2D(DepthwiseConv2D):
                              'should be defined. Found `None`.')
         input_dim = int(input_shape[channel_axis])
         
-        blur_filter = np.asarray(self.blur_kernel)
+        blur_filter = np.asarray(self.blur_kernel, dtype='float32')
         blur_filter = blur_filter[:, np.newaxis] * blur_filter[np.newaxis, :]
         blur_filter /= np.sum(blur_filter)
         blur_filter = blur_filter[::-1, ::-1] #?
         blur_filter = blur_filter[:, :, np.newaxis, np.newaxis]
         blur_filter = np.tile(blur_filter, [1, 1, input_dim, self.depth_multiplier])
-        self.depthwise_kernel = K.constant(blur_filter, dtype='float32') #?
+        self.depthwise_kernel = K.constant(blur_filter) #?
         
         if self.use_bias:
             self.bias = self.add_weight(shape=(input_dim * self.depth_multiplier,)
