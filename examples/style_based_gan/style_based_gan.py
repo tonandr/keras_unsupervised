@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 from skimage.io import imread, imsave
 import cv2 as cv
+import matplotlib.pyplot as plt
 
 from keras.models import Model
 from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, Dropout
@@ -292,12 +293,23 @@ class StyleGAN(AbstractGAN):
             self.custom_objects['TruncationTrick'] = TruncationTrick
             self.custom_objects['StyleMixingRegularization'] = StyleMixingRegularization
             self.custom_objects['InputVariable'] = InputVariable # Loss?
+            self.custom_objects['EqualizedLRDense'] = EqualizedLRDense # Loss?
+            self.custom_objects['EqualizedLRConv2D'] = EqualizedLRConv2D # Loss?
+            self.custom_objects['FusedConv2DTranspose'] = FusedConv2DTranspose # Loss?
+            self.custom_objects['BlurDepthwiseConv2D'] = BlurDepthwiseConv2D # Loss?
+            self.custom_objects['FusedConv2D'] = FusedConv2D # Loss?
+            
         else:    
             self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
                                , 'TruncationTrick': TruncationTrick
                                , 'StyleMixingRegularization': StyleMixingRegularization
-                               , 'InputVariable': InputVariable} # Loss?
-        
+                               , 'InputVariable': InputVariable
+                               , 'EqualizedLRDense': EqualizedLRDense
+                               , 'EqualizedLRConv2D': EqualizedLRConv2D
+                               , 'FusedConv2DTranspose': FusedConv2DTranspose
+                               , 'BlurDepthwiseConv2D': BlurDepthwiseConv2D
+                               , 'FusedConv2D': FusedConv2D} # Loss?
+      
         super(StyleGAN, self).__init__(conf) #?
                 
     def _cal_num_chs(self, layer_idx):
@@ -334,7 +346,7 @@ class StyleGAN(AbstractGAN):
         
         # Disentangled latent.
         dlatents1 = self.map(inputs1)
-    
+
         # Style mixing regularization.
         if self.nn_arch['label_usage']:
             inputs2 = [Input(shape=K.int_shape(inputs1[0])[1:]), inputs1[1]] # Normal random input.
@@ -343,12 +355,16 @@ class StyleGAN(AbstractGAN):
         
         dlatents2 = self.map(inputs2)
         
+        dlatents = Lambda(lambda x: x[0])([dlatents1, dlatents2])
+        
+        '''
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
         
         # Truncation trick.
         dlatents = TruncationTrick(psi=self.hps['trunc_psi']
                  , cutoff=self.hps['trunc_cutoff']
                  , momentum=self.hps['trunc_momentum'])(dlatents)
+        '''
 
         # Design the model according to the final image resolution.
         internal_inputs = []
@@ -364,7 +380,7 @@ class StyleGAN(AbstractGAN):
         x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
         
         layer_idx +=1
-        x = EqualizedLRConv2D(K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
+        x = EqualizedLRConv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
         x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
         
         # Middle layers.
@@ -379,14 +395,13 @@ class StyleGAN(AbstractGAN):
                                     , padding='same')(x)
             else:
                 x = UpSampling2D(size=(2, 2), interpolation='bilinear')(x)
-                x = EqualizedLRConv2D(K.int_shape(x), self._cal_num_chs(res - 1), 3, padding='same')(x)
+                x = EqualizedLRConv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
             
             #x = BlurDepthwiseConv2D(padding='same')(x) #?     
             x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
             
             layer_idx = res * 2 - 3            
-            x = EqualizedLRConv2D(K.int_shape(x)
-                       , self._cal_num_chs(res - 1)
+            x = EqualizedLRConv2D(self._cal_num_chs(res - 1)
                        , 3
                        , padding='same')(x)
             x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
@@ -394,8 +409,7 @@ class StyleGAN(AbstractGAN):
             res +=1
         
         # Last layer.
-        output1 = EqualizedLRConv2D(K.int_shape(x)
-                        , 3
+        output1 = EqualizedLRConv2D(3
                         , 1
                         , strides=1
                         , activation='tanh'
@@ -439,9 +453,9 @@ class StyleGAN(AbstractGAN):
         
         x = Lambda(lambda x: x[0] + x[1] * K.reshape(x[2], (1, 1, 1, -1)))([x, n, w]) # Broadcasting??
         x = LeakyReLU(0.2)(x)
-        x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.
+        x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x) # Pixelwise normalization.?
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
-        dlatents_p = EqualizedLRDense(K.int_shape(dlatents_p), K.int_shape(x)[-1] * 2)(dlatents_p) #?
+        dlatents_p = EqualizedLRDense(K.int_shape(x)[-1] * 2)(dlatents_p) #?
         x = AdaptiveINWithStyle()([x, dlatents_p])       
         
         return x
@@ -497,16 +511,14 @@ class StyleGAN(AbstractGAN):
         
         # First layer.
         res = res_log2
-        x = EqualizedLRConv2D(K.int_shape(images)
-                   , self._cal_num_chs(res - 1)
+        x = EqualizedLRConv2D(self._cal_num_chs(res - 1)
                    , 1
                    , padding='same')(images)
         x = LeakyReLU(0.2)(x)
                 
         # Middle layers.
         for res in range(res_log2, 2, -1):
-            x = EqualizedLRConv2D(K.int_shape(x)
-                   , self._cal_num_chs(res - 1)
+            x = EqualizedLRConv2D(self._cal_num_chs(res - 1)
                    , 3
                    , padding='same')(x)
             x = LeakyReLU(0.2)(x)
@@ -517,8 +529,7 @@ class StyleGAN(AbstractGAN):
                                 , 3
                                 , padding='same')(x)
             else:
-                x = EqualizedLRConv2D(K.int_shape(x)
-                   , self._cal_num_chs(res - 2)
+                x = EqualizedLRConv2D(self._cal_num_chs(res - 2)
                    , 3
                    , padding='same')(x) #?
                 x = AveragePooling2D()(x)    
@@ -527,16 +538,15 @@ class StyleGAN(AbstractGAN):
         
         # Layer for 4*4 size.
         res = 2
-        x = EqualizedLRConv2D(K.int_shape(x)
-                   , self._cal_num_chs(res - 1) #?
+        x = EqualizedLRConv2D(self._cal_num_chs(res - 1) #?
                    , 3
                    , padding='same')(x) #?
         x = LeakyReLU(0.2)(x)
         x = Flatten()(x)
-        x = EqualizedLRDense(K.int_shape(x), self._cal_num_chs(res - 2))(x)
+        x = EqualizedLRDense(self._cal_num_chs(res - 2))(x)
         x = LeakyReLU(0.2)(x)
         x = Dropout(rate=self.disc_nn_arch['dropout_rate'])(x)
-        x = EqualizedLRDense(K.int_shape(x), 1)(x)
+        x = EqualizedLRDense(1)(x)
         
         # Last layer.        
         if self.nn_arch['label_usage']:
@@ -609,7 +619,7 @@ class StyleGAN(AbstractGAN):
         
         # Check exception.
         if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
-            warnings.warn(UserWarning('For multi processing, use the instance of Sequence.'))
+            warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
         
         try:        
             # Get the output generator.
@@ -631,7 +641,7 @@ class StyleGAN(AbstractGAN):
                     output_generator = generator
             
             # Train.        
-            # Callbacks.
+            # Callbacks.            
             # disc ext.
             if self.conf['multi_gpu']:
                 callback_metrics_disc_ext =  self.disc_ext_p.metrics_names if hasattr(self.disc_ext_p, 'metrics_names') else []
@@ -640,6 +650,17 @@ class StyleGAN(AbstractGAN):
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
                                                          , stateful_metrics=[]))
+                
+                # Tensorboard callback.
+                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
+                                               , batch_size=self.hps['mini_batch_size']
+                                               , write_graph=True
+                                               , write_grads=True
+                                               , write_images=True
+                                               , update_freq='batch')
+                _callbacks.append(callback_tb)
+                
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext_p.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -655,6 +676,17 @@ class StyleGAN(AbstractGAN):
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
                                                          , stateful_metrics=[]))
+                    
+                # Tensorboard callback.
+                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
+                                               , batch_size=self.hps['mini_batch_size']
+                                               , write_graph=True
+                                               , write_grads=True
+                                               , write_images=True
+                                               , update_freq='batch')
+                _callbacks.append(callback_tb)
+                                
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
@@ -672,6 +704,17 @@ class StyleGAN(AbstractGAN):
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
                                                          , stateful_metrics=[]))
+                
+                # Tensorboard callback.
+                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
+                                               , batch_size=self.hps['mini_batch_size']
+                                               , write_graph=True
+                                               , write_grads=True
+                                               , write_images=True
+                                               , update_freq='batch')
+                _callbacks.append(callback_tb)
+
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc_p.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
@@ -687,6 +730,17 @@ class StyleGAN(AbstractGAN):
                 if verbose:
                     _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
                                                          , stateful_metrics=[]))
+                
+                # Tensorboard callback.
+                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
+                                               , batch_size=self.hps['mini_batch_size']
+                                               , write_graph=True
+                                               , write_grads=True
+                                               , write_images=True
+                                               , update_freq='batch')
+                _callbacks.append(callback_tb)
+                
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
@@ -702,7 +756,7 @@ class StyleGAN(AbstractGAN):
             num_samples = self.hps['mini_batch_size']
             epochs_log = {}
             
-            for e_i in range(self.hps['epochs']):                
+            for e_i in range(self.hps['epochs']):               
                 callbacks_disc_ext.on_epoch_begin(e_i)
                 callbacks_gen_disc.on_epoch_begin(e_i)
 

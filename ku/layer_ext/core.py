@@ -20,28 +20,22 @@ from ku.backend_ext import tensorflow_backend as Ke
 class EqualizedLRDense(Dense):
     """Equalized learning rate dense layer."""
     
-    def __init__(self, in_shape,
-                 units,
-                 activation=None,
-                 use_bias=True,
-                 kernel_initializer='random_normal',
-                 bias_initializer='zeros',
-                 kernel_regularizer=None,
-                 bias_regularizer=None,
-                 activity_regularizer=None,
-                 kernel_constraint=None,
-                 bias_constraint=None,
-                 gain=np.sqrt(2), 
-                 lrmul=1, 
-                 **kwargs):
-        self.in_shape = in_shape
+    def __init__(self
+                , units
+                , activation=None
+                , use_bias=True
+                , kernel_initializer='random_normal'
+                , bias_initializer='random_normal'
+                , kernel_regularizer=None
+                , bias_regularizer=None
+                , activity_regularizer=None
+                , kernel_constraint=None
+                , bias_constraint=None
+                , gain=np.sqrt(2)
+                , lrmul=1
+                , **kwargs):
         self.gain = gain
         self.lrmul = lrmul
-        
-        he_std = self.gain / np.sqrt(np.prod(in_shape[1:], axis=-1)) #?
-        init_std = 1.0 / self.lrmul
-        runtime_coeff = he_std * self.lrmul
-        kernel_initializer = initializers.random_normal(0, init_std * runtime_coeff)
         
         super(EqualizedLRDense, self).__init__(units,
                  activation=activation,
@@ -55,12 +49,32 @@ class EqualizedLRDense(Dense):
                  bias_constraint=bias_constraint, 
                  **kwargs)
 
-    def build(self, in_shape):
-        super(EqualizedLRDense, self).build(in_shape)
+    def build(self, input_shape):
+        super(EqualizedLRDense, self).build(input_shape)
+
+        self.he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        self.init_std = 1.0 / self.lrmul
+        self.runtime_coeff = self.he_std * self.lrmul
+        
+        he_const = K.constant(np.random.normal(0
+                                               , self.init_std * self.runtime_coeff
+                                               , size=K.int_shape(self.kernel)))
+        self.elr_normalized_kernel_func = K.function([self.kernel, he_const], [self.kernel / he_const])
+
+    def call(self, inputs):
+        he_const = np.random.normal(0, self.init_std * self.runtime_coeff, size=K.int_shape(self.kernel))
+        elr_normalized_kernel = self.elr_normalized_kernel_func([K.get_session().run(self.kernel.value()), he_const])
+        self.kernel.assign(elr_normalized_kernel[0])
+        
+        output = K.dot(inputs, self.kernel)
+        if self.use_bias:
+            output = K.bias_add(output, self.bias, data_format='channels_last')
+        if self.activation is not None:
+            output = self.activation(output)
+        return output
         
     def get_config(self):
-        config = {'in_shape': self.in_shape
-                  , 'gain': self.gain
+        config = {'gain': self.gain
                   , 'lrmul': self.lrmul
         }
         base_config = super(EqualizedLRDense, self).get_config()

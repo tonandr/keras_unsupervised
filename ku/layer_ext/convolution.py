@@ -22,8 +22,7 @@ from ku.backend_ext import tensorflow_backend as Ke
 class _EqualizedLRConv(_Conv):
     """Equalized learning rate abstract convolution layer."""
     
-    def __init__(self, in_shape
-                 , filters
+    def __init__(self, filters
                  , kernel_size
                  , rank=None
                  , strides=1
@@ -32,8 +31,8 @@ class _EqualizedLRConv(_Conv):
                  , dilation_rate=1
                  , activation=None
                  , use_bias=True
-                 , kernel_initializer='glorot_uniform'
-                 , bias_initializer='zeros'
+                 , kernel_initializer='random_normal'
+                 , bias_initializer='random_normal'
                  , kernel_regularizer=None
                  , bias_regularizer=None
                  , activity_regularizer=None
@@ -42,39 +41,81 @@ class _EqualizedLRConv(_Conv):
                  , gain=np.sqrt(2) 
                  , lrmul=1 
                  , **kwargs):
-        self.in_shape = in_shape
         self.gain = gain
         self.lrmul = lrmul
-        
-        he_std = self.gain / np.sqrt(np.prod(in_shape[1:], axis=-1)) #?
-        init_std = 1.0 / self.lrmul
-        runtime_coeff = he_std * self.lrmul
-        kernel_initializer = initializers.random_normal(0, init_std * runtime_coeff)
-        
+                        
         super(_EqualizedLRConv, self).__init__(rank
                                                , filters
                                                , kernel_size
                                                , strides=strides
-                                               ,  padding=padding
-                                               ,  data_format=data_format
-                                               ,  dilation_rate=dilation_rate
-                                               ,  activation=activation
-                                               ,  use_bias=use_bias
-                                               ,  kernel_initializer=kernel_initializer
-                                               ,  bias_initializer=bias_initializer
-                                               ,  kernel_regularizer=kernel_regularizer
-                                               ,  bias_regularizer=bias_regularizer
-                                               ,  activity_regularizer=activity_regularizer
-                                               ,  kernel_constraint=kernel_constraint
-                                               ,  bias_constraint=bias_constraint 
-                                               ,  **kwargs)
+                                               , padding=padding
+                                               , data_format=data_format
+                                               , dilation_rate=dilation_rate
+                                               , activation=activation
+                                               , use_bias=use_bias
+                                               , kernel_initializer=kernel_initializer
+                                               , bias_initializer=bias_initializer
+                                               , kernel_regularizer=kernel_regularizer
+                                               , bias_regularizer=bias_regularizer
+                                               , activity_regularizer=activity_regularizer
+                                               , kernel_constraint=kernel_constraint
+                                               , bias_constraint=bias_constraint 
+                                               , **kwargs)
 
-    def build(self, input_shape):
+    def build(self, input_shape): # Bias?
         super(_EqualizedLRConv, self).build(input_shape)
         
+        self.he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        self.init_std = 1.0 / self.lrmul
+        self.runtime_coeff = self.he_std * self.lrmul
+        
+        he_const = K.constant(np.random.normal(0
+                                               , self.init_std * self.runtime_coeff
+                                               , size=K.int_shape(self.kernel)))
+        self.elr_normalized_kernel_func = K.function([self.kernel, he_const], [self.kernel / he_const])
+
+    def call(self, inputs):
+        he_const = np.random.normal(0, self.init_std * self.runtime_coeff, size=K.int_shape(self.kernel))
+        elr_normalized_kernel = self.elr_normalized_kernel_func([K.get_session().run(self.kernel.value()), he_const])
+        self.kernel.assign(elr_normalized_kernel[0]) 
+        
+        if self.rank == 1:
+            outputs = K.conv1d(
+                inputs,
+                self.kernel,
+                strides=self.strides[0],
+                padding=self.padding,
+                data_format=self.data_format,
+                dilation_rate=self.dilation_rate[0])
+        if self.rank == 2:
+            outputs = K.conv2d(
+                inputs,
+                self.kernel,
+                strides=self.strides,
+                padding=self.padding,
+                data_format=self.data_format,
+                dilation_rate=self.dilation_rate)
+        if self.rank == 3:
+            outputs = K.conv3d(
+                inputs,
+                self.kernel,
+                strides=self.strides,
+                padding=self.padding,
+                data_format=self.data_format,
+                dilation_rate=self.dilation_rate)
+
+        if self.use_bias:
+            outputs = K.bias_add(
+                outputs,
+                self.bias,
+                data_format=self.data_format)
+
+        if self.activation is not None:
+            return self.activation(outputs)
+        return outputs
+        
     def get_config(self):
-        config = {'in_shape': self.in_shape
-                  , 'gain': self.gain
+        config = {'gain': self.gain
                   , 'lrmul': self.lrmul
         }
         base_config = super(_EqualizedLRConv, self).get_config()
@@ -83,7 +124,7 @@ class _EqualizedLRConv(_Conv):
 class EqualizedLRConv1D(_EqualizedLRConv):
     """Equalized learning rate 1d convolution layer."""
     
-    def __init__(self, in_shape
+    def __init__(self
                 , filters
                 , kernel_size
                 , strides=1
@@ -92,8 +133,8 @@ class EqualizedLRConv1D(_EqualizedLRConv):
                 , dilation_rate=1
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='glorot_uniform'
-                , bias_initializer='zeros'
+                , kernel_initializer='random_normal'
+                , bias_initializer='random_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -105,8 +146,7 @@ class EqualizedLRConv1D(_EqualizedLRConv):
         if padding == 'causal':
             if data_format != 'channels_last':
                 raise ValueError('When padding is casual, data format must be channel_last.')        
-        super(EqualizedLRConv1D, self).__init__(in_shape
-                                                , filters 
+        super(EqualizedLRConv1D, self).__init__(filters 
                                                 , kernel_size
                                                 , rank=1
                                                 , strides=strides
@@ -135,7 +175,7 @@ class EqualizedLRConv1D(_EqualizedLRConv):
 class EqualizedLRConv2D(_EqualizedLRConv):
     """Equalized learning rate 2d convolution layer."""
     
-    def __init__(self, in_shape
+    def __init__(self
                 , filters
                 , kernel_size
                 , strides=(1, 1)
@@ -144,8 +184,8 @@ class EqualizedLRConv2D(_EqualizedLRConv):
                 , dilation_rate=(1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='glorot_uniform'
-                , bias_initializer='zeros'
+                , kernel_initializer='random_normal'
+                , bias_initializer='random_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -154,8 +194,7 @@ class EqualizedLRConv2D(_EqualizedLRConv):
                 , gain=np.sqrt(2)
                 , lrmul=1
                 , **kwargs):    
-        super(EqualizedLRConv2D, self).__init__(in_shape
-                                                , filters                              
+        super(EqualizedLRConv2D, self).__init__(filters                              
                                                 , kernel_size
                                                 , rank=2
                                                 , strides=strides
@@ -184,7 +223,7 @@ class EqualizedLRConv2D(_EqualizedLRConv):
 class EqualizedLRConv3D(_EqualizedLRConv):
     """Equalized learning rate 3d convolution layer."""
     
-    def __init__(self, in_shape
+    def __init__(self
                 , filters
                 , kernel_size
                 , strides=(1, 1, 1)
@@ -193,8 +232,8 @@ class EqualizedLRConv3D(_EqualizedLRConv):
                 , dilation_rate=(1, 1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='glorot_uniform'
-                , bias_initializer='zeros'
+                , kernel_initializer='random_normal'
+                , bias_initializer='random_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -203,8 +242,7 @@ class EqualizedLRConv3D(_EqualizedLRConv):
                 , gain=np.sqrt(2) 
                 , lrmul=1 
                 , **kwargs):    
-        super(EqualizedLRConv3D, self).__init__(in_shape
-                , filters
+        super(EqualizedLRConv3D, self).__init__(filters
                 , kernel_size
                 , rank=3
                 , strides=strides
