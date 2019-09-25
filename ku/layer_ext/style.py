@@ -17,7 +17,7 @@ import keras.initializers as initializers
 
 from ku.backend_ext import tensorflow_backend as Ke
 
-class StyleMixingRegularization(_Merge):
+class StyleMixingRegularization(_Merge): #?
     """Style mixing regularization layer."""
 
     def __init__(self
@@ -61,7 +61,7 @@ class StyleMixingRegularization(_Merge):
         base_config = super(StyleMixingRegularization, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
    
-class TruncationTrick(Layer):
+class TruncationTrick(Layer): #?
     """Truncation trick layer."""
 
     def __init__(self
@@ -86,7 +86,7 @@ class TruncationTrick(Layer):
     def call(self, x):
         # Update moving average.
         mean = K.mean(x[:, 0], axis=0) #?
-        K.moving_average_update(self.moving_mean
+        x_moving_mean = K.moving_average_update(self.moving_mean
                                 , mean
                                 , self.momentum) #? add_update?
         
@@ -96,11 +96,11 @@ class TruncationTrick(Layer):
         if self.cutoff is not None:
             beta = Ke.where(np.arange(num_layers)[np.newaxis, :, np.newaxis] < self.cutoff
                             , self.psi * np.ones(shape=(1, num_layers, 1), dtype=np.float32)
-                            , np.ones(shape=(1, num_layers, 1), dtype=np.float32))
+                            , np.ones(shape=(1, num_layers, 1), dtype=np.float32)) #?
         else:
             beta = np.ones(shape=(1, num_layers, 1), dtype=np.float32)
     
-        return self.moving_mean + (x - self.moving_mean) * beta
+        return x_moving_mean + (x - self.moving_mean) * beta #?
 
     def get_config(self):
         config = {'psi': self.psi

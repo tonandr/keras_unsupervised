@@ -13,7 +13,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='keras-unsupervised',  # Required
-    version='0.1.0',  # Required
+    version='1.0.0.dev1',  # Required
     description='Keras based unsupervised learning framework.',  # Optional
     long_description=long_description,  # Optional
     long_description_content_type='text/markdown',  # Optional (see note above)
@@ -71,7 +71,7 @@ setup(
     # and refuse to install the project if the version does not match. If you
     # do not support Python 2, you can simplify this to '>=3.5' or similar, see
     # https://packaging.python.org/guides/distributing-packages-using-setuptools/#python-requires
-    python_requires='>=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, <4',
+    python_requires='>=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, !=3.6.*, <4',
 
     # This field lists other packages that your project depends on to run.
     # Any package you put here will be installed by pip when your project is
@@ -79,14 +79,10 @@ setup(
     #
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=[#'tensorflow-gpu>=1.13.1'
-                       'tensorflow-probability>=0.6.0'
-                      #, 'keras>=2.2.4'
-                      #, 'numpy>=1.16.4'
-                      , 'pandas>=0.24.2'
-                      , 'h5py>=2.8.0'
+    install_requires=['tensorflow-probability>=0.7.0'
+                      , 'keras>=2.3.0'
+                      , 'pandas>=0.25.1'
                       , 'scikit-image>=0.15.0'
-                      #, 'scipy>=1.2.1'
                       , 'opencv-contrib-python>=4.1.0.25'],  # Optional
 
     # List additional groups of dependencies here (e.g. development

@@ -10,10 +10,10 @@
 		"beta_1" : 0.0,
 		"beta_2" : 0.99,
 		"decay" : 0.0,
-		"epochs" : 30,
-		"batch_step" : 256,
-		"disc_k_step" : 5,
-		"mini_batch_size" : 78,
+		"epochs" : 3,
+		"batch_step" : 1,
+		"disc_k_step" : 1,
+		"mini_batch_size" : 1,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
@@ -38,6 +38,6 @@
 	"disc_hps" : {
 	},	
 	"disc_nn_arch" : {
-		"dropout_rate": 0.4
+		"dropout_rate": 0.0
 	}
 }

@@ -68,21 +68,15 @@ class _EqualizedLRConv(_Conv):
         self.he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
         self.init_std = 1.0 / self.lrmul
         self.runtime_coeff = self.he_std * self.lrmul
-        
-        he_const = K.constant(np.random.normal(0
-                                               , self.init_std * self.runtime_coeff
-                                               , size=K.int_shape(self.kernel)))
-        self.elr_normalized_kernel_func = K.function([self.kernel, he_const], [self.kernel / he_const])
 
     def call(self, inputs):
-        he_const = np.random.normal(0, self.init_std * self.runtime_coeff, size=K.int_shape(self.kernel))
-        elr_normalized_kernel = self.elr_normalized_kernel_func([K.get_session().run(self.kernel.value()), he_const])
-        self.kernel.assign(elr_normalized_kernel[0]) 
+        he_const = K.random_normal(K.int_shape(self.kernel), 0., self.init_std * self.runtime_coeff)
+        normalized_kernel = K.update(self.kernel, self.kernel / he_const) #?
         
         if self.rank == 1:
             outputs = K.conv1d(
                 inputs,
-                self.kernel,
+                normalized_kernel,
                 strides=self.strides[0],
                 padding=self.padding,
                 data_format=self.data_format,
@@ -90,7 +84,7 @@ class _EqualizedLRConv(_Conv):
         if self.rank == 2:
             outputs = K.conv2d(
                 inputs,
-                self.kernel,
+                normalized_kernel,
                 strides=self.strides,
                 padding=self.padding,
                 data_format=self.data_format,
@@ -98,7 +92,7 @@ class _EqualizedLRConv(_Conv):
         if self.rank == 3:
             outputs = K.conv3d(
                 inputs,
-                self.kernel,
+                normalized_kernel,
                 strides=self.strides,
                 padding=self.padding,
                 data_format=self.data_format,
@@ -317,7 +311,7 @@ class _FusedConv(_Conv):
             kernel = Ke.add_n([kernel[1:]
                                , kernel[:-1]])
             outputs = K.conv1d(inputs
-                , self.kernel
+                , kernel
                 , strides=self.strides[0]
                 , padding=self.padding
                 , data_format=self.data_format
@@ -347,7 +341,7 @@ class _FusedConv(_Conv):
                                , kernel[:-1, :-1, 1:]
                                , kernel[:-1, :-1, :-1]])
             outputs = K.conv3d(inputs
-                , self.kernel
+                , kernel
                 , strides=self.strides
                 , padding=self.padding
                 , data_format=self.data_format
@@ -570,7 +564,7 @@ class FusedConv2DTranspose(Conv2DTranspose):
                                , kernel[1:, :-1]
                                , kernel[:-1, :-1]])        
         outputs = K.conv2d_transpose(inputs
-            , self.kernel
+            , kernel
             , output_shape
             , self.strides
             , padding=self.padding

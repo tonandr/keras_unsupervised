@@ -14,6 +14,7 @@ import platform
 import json
 import warnings
 import glob
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -23,7 +24,7 @@ import matplotlib.pyplot as plt
 
 from keras.models import Model
 from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, Dropout
-from keras.layers import LeakyReLU, Conv2D, Conv2DTranspose, Activation, AveragePooling2D
+from keras.layers import LeakyReLU, Activation, AveragePooling2D, UpSampling2D
 import keras.backend as K 
 from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from keras.engine.training_utils import iter_sequence_infinite
@@ -36,7 +37,7 @@ from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegula
 from ku.layer_ext import EqualizedLRDense, EqualizedLRConv2D
 from ku.layer_ext.convolution import FusedConv2DTranspose, BlurDepthwiseConv2D,\
     FusedConv2D
-from keras.layers.convolutional import UpSampling2D
+from ku.callbacks_ext import TensorBoardExt
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -45,6 +46,9 @@ from keras.layers.convolutional import UpSampling2D
 DEBUG = True
 MULTI_GPU = False
 NUM_GPUS = 4
+
+MODE_TRAINING = 0
+MODE_VALIDATION = 1
 
 def resize_image(image, res):
     """Resize an image according to resolution.
@@ -104,7 +108,7 @@ class StyleGAN(AbstractGAN):
     class TrainingSequenceFFHQ(Sequence):
         """Training data set sequence for Flickr-Faces-HQ."""
         
-        def __init__(self, raw_data_path, hps, res, batch_shuffle=True):
+        def __init__(self, raw_data_path, hps, res, mode=MODE_TRAINING, val_ratio=0.1, batch_shuffle=True):
             """
             Parameters
             ----------
@@ -120,21 +124,46 @@ class StyleGAN(AbstractGAN):
             self.raw_data_path = raw_data_path
             self.hps = hps
             self.res = res
+            self.mode = mode
+            self.val_ratio = val_ratio
             self.batch_shuffle = batch_shuffle
             
-            self.sample_paths = glob.glob(os.path.join(self.raw_data_path, '**/*.png'), recursive=True)
-            self.total_samples = len(self.sample_paths)
+            if self.mode == MODE_TRAINING:
+                self.sample_paths = glob.glob(os.path.join(self.raw_data_path, '**/*.png'), recursive=True)
+                self.sample_paths = self.sample_paths[:int(len(self.sample_paths) * (1.0 - self.val_ratio))]
+
+                self.total_samples = len(self.sample_paths)
+                
+                self.batch_size = self.hps['mini_batch_size']
+                self.hps['step'] = self.total_samples // self.batch_size
+                
+                if self.total_samples % self.batch_size != 0:
+                    self.hps['temp_step'] = self.hps['step'] + 1
+                else:
+                    self.hps['temp_step'] = self.hps['step']
+            elif self.mode == MODE_VALIDATION:
+                self.sample_paths = glob.glob(os.path.join(self.raw_data_path, '**/*.png'), recursive=True)
+                self.sample_paths = self.sample_paths[int(len(self.sample_paths) * (1.0 - self.val_ratio)):]
+                
+                self.total_samples = len(self.sample_paths)
             
-            self.batch_size = self.hps['mini_batch_size']
-            self.hps['step'] = self.total_samples // self.batch_size
-            
-            if self.total_samples % self.batch_size != 0:
-                self.hps['temp_step'] = self.hps['step'] + 1
+                self.batch_size = self.hps['mini_batch_size']
+                self.hps['val_step'] = self.total_samples // self.batch_size
+                
+                if self.total_samples % self.batch_size != 0:
+                    self.hps['val_temp_step'] = self.hps['val_step'] + 1
+                else:
+                    self.hps['val_temp_step'] = self.hps['val_step']
             else:
-                self.hps['temp_step'] = self.hps['step']
+                raise ValueError('Mode must be assigned.')
                 
         def __len__(self):
-            return self.hps['temp_step']
+            if self.mode == MODE_TRAINING:
+                return self.hps['temp_step']
+            elif self.mode == MODE_VALIDATION:
+                return self.hps['val_temp_step']
+            else:
+                raise ValueError('Mode must be assigned.')            
         
         def __getitem__(self, index):
             images = []
@@ -155,7 +184,14 @@ class StyleGAN(AbstractGAN):
                         labels.append(int(self.sample_paths[bi].split('/')[-1].split('.')[0]))                
             else:    
                 # Check the last index.
-                if index == (self.hps['temp_step'] - 1):
+                if self.mode == MODE_TRAINING:
+                    step = self.hps['temp_step']
+                elif self.mode == MODE_VALIDATION:
+                    step = self.hps['val_temp_step']
+                else:
+                    raise ValueError('Mode must be assigned.')                 
+                
+                if index == (step - 1):
                     for bi in range(index * self.batch_size, self.total_samples):
                         image = imread(self.sample_paths[bi])                    
                         image = 2.0 * (image - 0.5)
@@ -569,13 +605,22 @@ class StyleGAN(AbstractGAN):
                                               , batch_shuffle=True)
         '''
         
-        generator = self.TrainingSequenceFFHQ(self.raw_data_path
+        generator_tr = self.TrainingSequenceFFHQ(self.raw_data_path
                                               , self.hps
                                               , self.nn_arch['resolution']
-                                              , batch_shuffle=True)        
+                                              , MODE_TRAINING
+                                              , val_ratio=0.1
+                                              , batch_shuffle=False)
+        generator_val = self.TrainingSequenceFFHQ(self.raw_data_path
+                                              , self.hps
+                                              , self.nn_arch['resolution']
+                                              , MODE_VALIDATION
+                                              , val_ratio=0.1
+                                              , batch_shuffle=False)        
         
         # Train.
-        self.fit_generator(generator
+        self.fit_generator(generator_tr
+                           , validation_data_gen=generator_val
                            , max_queue_size=10
                            , workers=1
                            , use_multiprocessing=False
@@ -583,19 +628,36 @@ class StyleGAN(AbstractGAN):
 
     def fit_generator(self
                       , generator
+                      , verbose=1
+                      , callbacks_disc_ext=None
+                      , callbacks_gen_disc=None
+                      , validation_data_gen=None #?
+                      , validation_steps=None
+                      , validation_freq=1 #?
+                      , class_weight=None #?
                       , max_queue_size=10
                       , workers=1
                       , use_multiprocessing=False #?
                       , shuffle=True
-                      , callbacks_disc_ext=None
-                      , callbacks_gen_disc=None
-                      , verbose=1):
+                      , initial_epoch=0): #?
         """Train the GAN model with the generator.
         
         Parameters
         ----------
         generator: Generator
             Training data generator.
+        verbose: Integer 
+            Verbose mode (default=1).
+        callback_disc_ext: list
+            disc_ext callbacks (default=None).
+        callback_gen_disc: list
+            gen_disc callbacks (default=None).
+        validation_data_gen: Generator or Sequence
+            Validation generator or sequence (default=None).
+        validation_steps: Integer
+            Validation steps (default=None).
+        validation_freq: Integer
+            Validation frequency (default=1).
         max_queue_size: Integer
             Maximum size for the generator queue (default: 10).
         workers: Integer
@@ -604,25 +666,74 @@ class StyleGAN(AbstractGAN):
             Multi-processing flag (default: False).
         shuffle: Boolean
             Batch shuffling flag (default: True).
-        callbacks_disc_ext: list
-            Callback list of disc ext (default=None).
-        callbacks_gen_disc: list 
-            Callback list of gen_disc (default=None).
-        verbose: Integer 
-            Verbose mode (default=1).
-            
+        initial_epoch: Integer
+            Initial epoch (default: 1).
+        
         Returns
         -------
         Training history.
             tuple
         """
-        
+
         # Check exception.
+        epoch = initial_epoch #?
+        do_validation = bool(validation_data_gen)
+        if do_validation:
+            assert hasattr(validation_data_gen, 'next') or \
+                hasattr(validation_data_gen, '__next') or \
+                isinstance(validation_data_gen, Sequence)
+            
+            if not isinstance(validation_data_gen, Sequence):
+                assert validation_steps #?
+        
+            assert isinstance(validation_freq, int)
+        
+        if self.conf['multi_gpu']: #?
+            self.gen_disc_p._make_train_function()
+            self.disc_ext_p._make_train_function()
+            
+            if do_validation:
+                self.gen_disc_p._make_test_function()
+                self.disc_ext_p._make_test_function()
+        else:
+            self.gen_disc._make_train_function()
+            self.disc_ext._make_train_function()
+            
+            if do_validation:
+                self.gen_disc._make_test_function()
+                self.disc_ext._make_test_function()            
+            
         if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
             warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
-        
-        try:        
-            # Get the output generator.
+
+        # Initialize the results directory
+        if not os.path.isdir(os.path.join('results')):
+            os.mkdir(os.path.join('results'))
+        else:
+            shutil.rmtree(os.path.join('results'))
+            os.mkdir(os.path.join('results'))
+            
+        try:                    
+            # Get the validation generator and output generator.
+            if do_validation:
+                if workers > 0:
+                    if isinstance(validation_data_gen, Sequence):
+                        val_enq = OrderedEnqueuer(validation_data_gen
+                                                  , use_multiprocessing=use_multiprocessing) # shuffle?
+                        validation_steps = validation_steps or len(validation_data_gen)
+                    else:
+                        val_enq = GeneratorEnqueuer(validation_data_gen
+                                                    , use_multiprocessing=use_multiprocessing)
+                    
+                    val_enq.start(workers=workers, max_queue_size=max_queue_size)
+                    val_generator = val_enq.get()
+                else:
+                    if isinstance(validation_data_gen, Sequence):
+                        val_generator = iter_sequence_infinite(validation_data_gen)
+                        validation_steps = validation_steps or len(validation_data_gen)
+                    else:
+                        val_generator = validation_data_gen 
+            
             if workers > 0:
                 if isinstance(generator, Sequence):
                     enq = OrderedEnqueuer(generator
@@ -639,12 +750,13 @@ class StyleGAN(AbstractGAN):
                     output_generator = iter_sequence_infinite(generator)
                 else:
                     output_generator = generator
-            
-            # Train.        
+                 
             # Callbacks.            
             # disc ext.
             if self.conf['multi_gpu']:
-                callback_metrics_disc_ext =  self.disc_ext_p.metrics_names if hasattr(self.disc_ext_p, 'metrics_names') else []
+                out_labels_disc_ext =  self.disc_ext_p.metrics_names if hasattr(self.disc_ext_p, 'metrics_names') else []
+                callback_metrics_disc_ext = out_labels_disc_ext \
+                    + ['val_' + out_label for out_label in out_labels_disc_ext]
                 self.disc_ext_p.history = cbks.History()
                 _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
                 if verbose:
@@ -652,7 +764,7 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                 
                 # Tensorboard callback.
-                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                callback_tb = TensorBoardExt(log_dir='.\\logs'
                                                , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
@@ -664,13 +776,16 @@ class StyleGAN(AbstractGAN):
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext_p.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
-                callbacks_disc_ext.set_model(self.disc_ext_p)
+                callbacks_disc_ext.set_model(self.disc_ext_p._get_callback_model()) #?
                 callbacks_disc_ext.set_params({'epochs': self.hps['epochs']
                                                , 'steps': self.hps['batch_step'] * self.hps['disc_k_step']
                                                , 'verbose': verbose
+                                               , 'do_validation': do_validation
                                                , 'metrics': callback_metrics_disc_ext})
             else:
-                callback_metrics_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
+                out_labels_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
+                callback_metrics_disc_ext = out_labels_disc_ext \
+                    + ['val_' + out_label for out_label in out_labels_disc_ext]
                 self.disc_ext.history = cbks.History()
                 _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
                 if verbose:
@@ -678,7 +793,7 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                     
                 # Tensorboard callback.
-                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                callback_tb = TensorBoardExt(log_dir='.\\logs'
                                                , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
@@ -690,15 +805,18 @@ class StyleGAN(AbstractGAN):
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
                 callbacks_disc_ext = cbks.CallbackList(_callbacks)
                 
-                callbacks_disc_ext.set_model(self.disc_ext)
+                callbacks_disc_ext.set_model(self.disc_ext._get_callback_model()) #?
                 callbacks_disc_ext.set_params({'epochs': self.hps['epochs']
                                                , 'steps': self.hps['batch_step'] * self.hps['disc_k_step']
                                                , 'verbose': verbose
+                                               , 'do_validation': do_validation
                                                , 'metrics': callback_metrics_disc_ext})
             
             # gen_disc.
             if self.conf['multi_gpu']:
-                callback_metrics_gen_disc = self.gen_disc_p.metrics_names if hasattr(self.gen_disc_p, 'metrics_names') else []
+                out_labels_gen_disc = self.gen_disc_p.metrics_names if hasattr(self.gen_disc_p, 'metrics_names') else []
+                callback_metrics_gen_disc = out_labels_gen_disc \
+                    + ['val_' + out_label for out_label in out_labels_gen_disc]
                 self.gen_disc_p.history = cbks.History()
                 _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
                 if verbose:
@@ -706,7 +824,7 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                 
                 # Tensorboard callback.
-                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                callback_tb = TensorBoardExt(log_dir='.\\logs'
                                                , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
@@ -718,13 +836,16 @@ class StyleGAN(AbstractGAN):
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc_p.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
-                callbacks_gen_disc.set_model(self.gen_disc_p)
+                callbacks_gen_disc.set_model(self.gen_disc_p._get_callback_model())
                 callbacks_gen_disc.set_params({'epochs': self.hps['epochs']
                                                , 'steps': self.hps['batch_step']
                                                , 'verbose': verbose
+                                               , 'do_validation': do_validation
                                                , 'metrics': callback_metrics_gen_disc})
             else:
-                callback_metrics_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
+                out_labels_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
+                callback_metrics_gen_disc = out_labels_gen_disc \
+                    + ['val_' + out_label for out_label in out_labels_gen_disc]
                 self.gen_disc.history = cbks.History()
                 _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
                 if verbose:
@@ -732,7 +853,7 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                 
                 # Tensorboard callback.
-                callback_tb = cbks.TensorBoard(log_dir='.\\logs'
+                callback_tb = TensorBoardExt(log_dir='.\\logs'
                                                , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
@@ -744,19 +865,22 @@ class StyleGAN(AbstractGAN):
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
                 callbacks_gen_disc = cbks.CallbackList(_callbacks)
                 
-                callbacks_gen_disc.set_model(self.gen_disc)
+                callbacks_gen_disc.set_model(self.gen_disc._get_callback_model())
                 callbacks_gen_disc.set_params({'epochs': self.hps['epochs']
                                                , 'steps': self.hps['batch_step']
                                                , 'verbose': verbose
+                                               , 'do_validation': do_validation
                                                , 'metrics': callback_metrics_gen_disc})
             
+            # Train.
             callbacks_disc_ext.on_train_begin()
             callbacks_gen_disc.on_train_begin()           
                         
             num_samples = self.hps['mini_batch_size']
-            epochs_log = {}
+            epochs_log_disc_ext = {}
+            epochs_log_gen_disc = {}
             
-            for e_i in range(self.hps['epochs']):               
+            for e_i in range(epoch, self.hps['epochs']):               
                 callbacks_disc_ext.on_epoch_begin(e_i)
                 callbacks_gen_disc.on_epoch_begin(e_i)
 
@@ -896,20 +1020,66 @@ class StyleGAN(AbstractGAN):
                     callbacks_gen_disc.on_batch_end(s_i, batch_logs)
                     print('\n', batch_logs)
                     
-                callbacks_disc_ext.on_epoch_end(e_i, epochs_log)
-                callbacks_gen_disc.on_epoch_end(e_i, epochs_log)
+                # Do validation.
+                if do_validation:
+                    if e_i % validation_freq == 0: #?
+                        # disc_ext.
+                        if self.conf['multi_gpu']:
+                            val_outs_disc_ext = self.disc_ext_p.evaluate_generator(val_generator
+                                                                          , validation_steps #?
+                                                                          , callbacks=callbacks_disc_ext
+                                                                          , workers=0)
+                        else:
+                            val_outs_disc_ext = self.disc_ext.evaluate_generator(val_generator
+                                                                          , validation_steps #?
+                                                                          , callbacks=callbacks_disc_ext
+                                                                          , workers=0) 
+                        
+                        # gen_disc.
+                        if self.conf['multi_gpu']:
+                            val_outs_gen_disc = self.gen_disc_p.evaluate_generator(val_generator
+                                                                          , validation_steps #?
+                                                                          , callbacks=callbacks_gen_disc
+                                                                          , workers=0)
+                        else:
+                            val_outs_gen_disc = self.gen_disc.evaluate_generator(val_generator
+                                                                          , validation_steps #?
+                                                                          , callbacks=callbacks_gen_disc
+                                                                          , workers=0)
+                
+                # Update validation data to tensorboard. ?
+                # Get validation data.
+                val_data = next(val_generator)
+                
+                val_data_disc_ext = None
+                val_data_gen_disc = None
+                
+                for c in callbacks_disc_ext: c.validation_data = val_data_disc_ext
+                for c in callbacks_gen_disc: c.validation_data = val_data_gen_disc    
+                
+                # Make epochs log.
+                val_outs_disc_ext = to_list(val_outs_disc_ext)
+                for out_label, val_out in zip(out_labels_disc_ext, val_outs_disc_ext):
+                    epochs_log_disc_ext['val_' + out_label] = val_out
+                                
+                val_outs_gen_disc = to_list(val_outs_gen_disc)
+                for out_label, val_out in zip(out_labels_gen_disc, val_outs_gen_disc):
+                    epochs_log_gen_disc['val_' + out_label] = val_out                     
+                
+                callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
                 
                 # Save models.
                 with CustomObjectScope(self.custom_objects):
                     self.disc_ext.save(self.DISC_EXT_PATH)
                     self.gen_disc.save(self.GEN_DISC_PATH)
                 
-                # Save sample images.
+                # Save sample images. 
                 res = self.generate(np.random.rand(1, self.map_nn_arch['latent_dim'])
                                     , np.random.randint(self.map_nn_arch['num_classes'], size=1))
                 sample = res[0]
                 sample = np.squeeze(sample)
-                imsave('sample_' + str(e_i) + '.png', sample)
+                imsave(os.path.join('results', 'sample_' + str(e_i) + '.png'), sample)
                 
             callbacks_disc_ext.on_train_end()
             callbacks_gen_disc.on_train_end()  
@@ -918,7 +1088,8 @@ class StyleGAN(AbstractGAN):
                 if enq is not None:
                     enq.stop()
             finally:
-                pass
+                if val_enq is not None:
+                    val_enq.stop()
 
         if self.conf['multi_gpu']:
             return self.disc_ext_p.history, self.gen_disc_p.history

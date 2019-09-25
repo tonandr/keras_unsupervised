@@ -55,18 +55,12 @@ class EqualizedLRDense(Dense):
         self.he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
         self.init_std = 1.0 / self.lrmul
         self.runtime_coeff = self.he_std * self.lrmul
-        
-        he_const = K.constant(np.random.normal(0
-                                               , self.init_std * self.runtime_coeff
-                                               , size=K.int_shape(self.kernel)))
-        self.elr_normalized_kernel_func = K.function([self.kernel, he_const], [self.kernel / he_const])
 
     def call(self, inputs):
-        he_const = np.random.normal(0, self.init_std * self.runtime_coeff, size=K.int_shape(self.kernel))
-        elr_normalized_kernel = self.elr_normalized_kernel_func([K.get_session().run(self.kernel.value()), he_const])
-        self.kernel.assign(elr_normalized_kernel[0])
-        
-        output = K.dot(inputs, self.kernel)
+        he_const = K.random_normal(K.int_shape(self.kernel), 0., self.init_std * self.runtime_coeff)
+        normalized_kernel = K.update(self.kernel, self.kernel / he_const) #?
+        output = K.dot(inputs, normalized_kernel)
+
         if self.use_bias:
             output = K.bias_add(output, self.bias, data_format='channels_last')
         if self.activation is not None:

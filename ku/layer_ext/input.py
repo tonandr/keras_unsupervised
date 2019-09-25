@@ -17,7 +17,7 @@ import keras.initializers as initializers
 
 from ku.backend_ext import tensorflow_backend as Ke
 
-class InputVariable(Layer):
+class InputVariable(Layer): #?
     """Input variable."""
     
     def __init__(self
