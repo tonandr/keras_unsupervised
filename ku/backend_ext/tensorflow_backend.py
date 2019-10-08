@@ -1,9 +1,3 @@
-'''
-Created on 2019. 5. 23.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-'''
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

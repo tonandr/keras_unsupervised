@@ -1,20 +1,10 @@
-"""
-Created on 2019. 6. 21.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-
-Revision
-    -Jun. 24, 2019
-        AdaptiveIN is developed.
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from keras import backend as K
-from keras.layers import Layer, InputSpec
-from keras.layers.merge import _Merge
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.layers import Layer, InputSpec
+from tensorflow.python.keras.layers.merge import _Merge
 
 class AdaptiveINWithStyle(Layer):
     """Adaptive instance normalization layer with the image and disentangled latent tensors."""

@@ -1,18 +1,12 @@
-"""
-Created on 2019. 6. 10.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from keras import backend as K
-from keras.layers import Layer
-from keras import initializers
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.layers import Layer
+from tensorflow.python.keras import initializers
 
 from ku.backend_ext import tensorflow_backend as Ke
 

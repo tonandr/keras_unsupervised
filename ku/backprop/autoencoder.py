@@ -1,19 +1,13 @@
-"""
-Created on 2019. 6. 17.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from keras.models import Model
-from keras.layers import Input, Dense
-from keras.engine.input_layer import InputLayer
-from keras import optimizers
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.layers import Input, Dense
+from tensorflow.python.keras.engine.input_layer import InputLayer
+from tensorflow.python.keras import optimizers
 
 from ku.utility import reverse_undirected_model
 

@@ -1,1 +1,1 @@
-from .tensorboard import TensorBoardExt
+from .tensorboard_ext import TensorBoardExt

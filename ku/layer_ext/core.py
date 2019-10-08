@@ -1,19 +1,13 @@
-"""
-Created on 2019. 8. 16.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from keras import backend as K
-from keras.layers.merge import _Merge
-from keras.layers import Layer, InputSpec, Dense
-import keras.initializers as initializers
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.layers.merge import _Merge
+from tensorflow.python.keras.layers import Layer, InputSpec, Dense
+import tensorflow.keras.initializers as initializers
 
 from ku.backend_ext import tensorflow_backend as Ke
 

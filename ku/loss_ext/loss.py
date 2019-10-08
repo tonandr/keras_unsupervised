@@ -1,17 +1,11 @@
-'''
-Created on 2019. 7. 27.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-'''
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from keras.layers import Input
-from keras import backend as K
+from tensorflow.python.keras.layers import Input
+from tensorflow.python.keras import backend as K
 
 EPSILON = 1e-8
 

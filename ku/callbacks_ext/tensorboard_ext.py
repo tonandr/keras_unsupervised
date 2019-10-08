@@ -47,8 +47,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from keras.callbacks import TensorBoard
-import keras.backend as K
+from tensorflow.python.keras.callbacks import TensorBoard
+import tensorflow.keras.backend as K
 
 class TensorBoardExt(TensorBoard): # tf 1.0?, license?
     def on_batch_end(self, batch, logs=None):

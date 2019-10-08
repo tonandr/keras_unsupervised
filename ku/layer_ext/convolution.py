@@ -1,25 +1,19 @@
-"""
-Created on 2019. 8. 16.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from keras import backend as K
-from keras.layers.merge import _Merge
-from keras.layers import Layer, InputSpec, Dense, Conv2D, Conv2DTranspose, DepthwiseConv2D
-from keras.layers.convolutional import _Conv
-from keras.utils import conv_utils
-import keras.initializers as initializers
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.layers.merge import _Merge
+from tensorflow.python.keras.layers import Layer, InputSpec, Dense, Conv2D, Conv2DTranspose, DepthwiseConv2D
+from tensorflow.python.keras.layers.convolutional import Conv
+from tensorflow.python.keras.utils import conv_utils
+import tensorflow.keras.initializers as initializers
 
 from ku.backend_ext import tensorflow_backend as Ke
 
-class _EqualizedLRConv(_Conv):
+class _EqualizedLRConv(Conv):
     """Equalized learning rate abstract convolution layer."""
     
     def __init__(self, filters
@@ -262,7 +256,7 @@ class EqualizedLRConv3D(_EqualizedLRConv):
         base_config.pop('rank') #?
         return base_config
 
-class _FusedConv(_Conv):
+class _FusedConv(Conv):
     """Fused abstraction convolution layer."""
     
     def __init__(self 
@@ -541,16 +535,18 @@ class FusedConv2DTranspose(Conv2DTranspose):
             out_pad_h, out_pad_w = self.output_padding
 
         # Infer the dynamic output shape:
-        out_height = conv_utils.deconv_length(height
-                                              , stride_h, kernel_h
+        out_height = conv_utils.deconv_output_length(height
+                                              , kernel_h
                                               , self.padding
-                                              , out_pad_h
-                                              , self.dilation_rate[0])
-        out_width = conv_utils.deconv_length(width
-                                            , stride_w, kernel_w
+                                              , output_padding=out_pad_h
+                                              , stride=stride_h
+                                              , dilation=self.dilation_rate[0])
+        out_width = conv_utils.deconv_output_length(width
+                                            , kernel_w
                                             , self.padding
-                                            , out_pad_w
-                                            , self.dilation_rate[1])
+                                            , output_padding=out_pad_w
+                                            , stride=stride_w
+                                            , dilation=self.dilation_rate[1])
         if self.data_format == 'channels_first':
             output_shape = (batch_size, self.filters, out_height, out_width)
         else:

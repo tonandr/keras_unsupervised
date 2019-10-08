@@ -1,12 +1,10 @@
-"""
-Created on 2019. 6. 12.
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-@author: Inwoo Chung (gutomitai@gmail.com)
-"""
-
-from keras.models import Model, model_from_json
-from keras.layers import Input, Dense
-from keras.engine.input_layer import InputLayer
+from tensorflow.python.keras.models import Model, model_from_json
+from tensorflow.python.keras.layers import Input, Dense
+from tensorflow.python.keras.engine.input_layer import InputLayer
 
 def reverse_undirected_model(model):
     """Reverse the undirected model.

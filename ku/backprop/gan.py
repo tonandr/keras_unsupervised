@@ -1,9 +1,3 @@
-"""
-Created on 2019. 6. 17.
-
-@author: Inwoo Chung (gutomitai@gmail.com)
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -11,12 +5,12 @@ from __future__ import print_function
 from abc import ABC, abstractmethod
 from functools import partial
 
-from keras.layers import Input, Lambda
-from keras.models import Model, load_model
-from keras.utils import multi_gpu_model
-from keras import optimizers
-from keras.utils.generic_utils import CustomObjectScope
-import keras.backend as K
+from tensorflow.python.keras.layers import Input, Lambda
+from tensorflow.python.keras.models import Model, load_model
+from tensorflow.python.keras.utils import multi_gpu_model
+from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
+import tensorflow.keras.backend as K
 
 from ..layer_ext import InputRandomUniform
 from ..loss_ext import disc_ext_regular_loss1, disc_ext_regular_loss2, gen_disc_regular_loss1, gen_disc_regular_loss2

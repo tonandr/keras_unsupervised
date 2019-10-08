@@ -22,15 +22,15 @@ from skimage.io import imread, imsave
 import cv2 as cv
 import matplotlib.pyplot as plt
 
-from keras.models import Model
-from keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, Dropout
-from keras.layers import LeakyReLU, Activation, AveragePooling2D, UpSampling2D
-import keras.backend as K 
-from keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
-from keras.engine.training_utils import iter_sequence_infinite
-from keras.utils import plot_model
-from keras.utils.generic_utils import to_list, CustomObjectScope
-from keras import callbacks as cbks, initializers
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, Dropout
+from tensorflow.python.keras.layers import LeakyReLU, Activation, AveragePooling2D, UpSampling2D
+import tensorflow.python.keras.backend as K 
+from tensorflow.python.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
+from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
+from tensorflow.python.keras.utils import plot_model
+from tensorflow.python.keras.utils.generic_utils import to_list, CustomObjectScope
+from tensorflow.python.keras import callbacks as cbks, initializers
 
 from ku.backprop import AbstractGAN
 from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization, InputVariable
