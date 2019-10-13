@@ -22,10 +22,11 @@ from skimage.io import imread, imsave
 import cv2 as cv
 import matplotlib.pyplot as plt
 
+import tensorflow as tf
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, Dropout
 from tensorflow.python.keras.layers import LeakyReLU, Activation, AveragePooling2D, UpSampling2D
-import tensorflow.python.keras.backend as K 
+import tensorflow.keras.backend as K 
 from tensorflow.python.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
 from tensorflow.python.keras.utils import plot_model
@@ -35,8 +36,8 @@ from tensorflow.python.keras import callbacks as cbks, initializers
 from ku.backprop import AbstractGAN
 from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegularization, InputVariable
 from ku.layer_ext import EqualizedLRDense, EqualizedLRConv2D
-from ku.layer_ext.convolution import FusedConv2DTranspose, BlurDepthwiseConv2D,\
-    FusedConv2D
+from ku.layer_ext.convolution import FusedEqualizedLRConv2DTranspose, BlurDepthwiseConv2D,\
+    FusedEqualizedLRConv2D
 from ku.callbacks_ext import TensorBoardExt
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
@@ -331,9 +332,9 @@ class StyleGAN(AbstractGAN):
             self.custom_objects['InputVariable'] = InputVariable # Loss?
             self.custom_objects['EqualizedLRDense'] = EqualizedLRDense # Loss?
             self.custom_objects['EqualizedLRConv2D'] = EqualizedLRConv2D # Loss?
-            self.custom_objects['FusedConv2DTranspose'] = FusedConv2DTranspose # Loss?
+            self.custom_objects['FusedEqualizedLRConv2DTranspose'] = FusedEqualizedLRConv2DTranspose # Loss?
             self.custom_objects['BlurDepthwiseConv2D'] = BlurDepthwiseConv2D # Loss?
-            self.custom_objects['FusedConv2D'] = FusedConv2D # Loss?
+            self.custom_objects['FusedEqualizedLRConv2D'] = FusedEqualizedLRConv2D # Loss?
             
         else:    
             self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
@@ -342,9 +343,9 @@ class StyleGAN(AbstractGAN):
                                , 'InputVariable': InputVariable
                                , 'EqualizedLRDense': EqualizedLRDense
                                , 'EqualizedLRConv2D': EqualizedLRConv2D
-                               , 'FusedConv2DTranspose': FusedConv2DTranspose
+                               , 'FusedEqualizedLRConv2DTranspose': FusedEqualizedLRConv2DTranspose
                                , 'BlurDepthwiseConv2D': BlurDepthwiseConv2D
-                               , 'FusedConv2D': FusedConv2D} # Loss?
+                               , 'FusedEqualizedLRConv2D': FusedEqualizedLRConv2D} # Loss?
       
         super(StyleGAN, self).__init__(conf) #?
                 
@@ -375,7 +376,7 @@ class StyleGAN(AbstractGAN):
         self._create_mapping_net()
         
         # Inputs.
-        inputs1 = self.map.inputs
+        inputs1 = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in self.map.inputs]
         
         if self.nn_arch['label_usage']:
             output2 = Lambda(lambda x: x)(inputs1[1]) 
@@ -391,16 +392,13 @@ class StyleGAN(AbstractGAN):
         
         dlatents2 = self.map(inputs2)
         
-        dlatents = Lambda(lambda x: x[0])([dlatents1, dlatents2])
-        
-        '''
+        #dlatents = Lambda(lambda x: x[0])([dlatents1, dlatents2])
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
         
         # Truncation trick.
         dlatents = TruncationTrick(psi=self.hps['trunc_psi']
                  , cutoff=self.hps['trunc_cutoff']
                  , momentum=self.hps['trunc_momentum'])(dlatents)
-        '''
 
         # Design the model according to the final image resolution.
         internal_inputs = []
@@ -425,7 +423,7 @@ class StyleGAN(AbstractGAN):
             layer_idx = res * 2 - 4
             
             if np.min(K.int_shape(x)[2:]) * 2 >= 128: #?    
-                x = FusedConv2DTranspose(filters=self._cal_num_chs(res - 1)
+                x = FusedEqualizedLRConv2DTranspose(filters=self._cal_num_chs(res - 1)
                                     , kernel_size=3 #?
                                     , strides=2
                                     , padding='same')(x)
@@ -433,7 +431,7 @@ class StyleGAN(AbstractGAN):
                 x = UpSampling2D(size=(2, 2), interpolation='bilinear')(x)
                 x = EqualizedLRConv2D(self._cal_num_chs(res - 1), 3, padding='same')(x)
             
-            #x = BlurDepthwiseConv2D(padding='same')(x) #?     
+            x = BlurDepthwiseConv2D(padding='same')(x) #?     
             x = self._gen_final_layer_block(x, dlatents, layer_idx, internal_inputs) 
             
             layer_idx = res * 2 - 3            
@@ -510,7 +508,7 @@ class StyleGAN(AbstractGAN):
         
             # Label multiplication.
             l = Flatten()(Embedding(self.map_nn_arch['num_classes']
-                              , self.map_nn_arch['latent_dim'])(labels))
+                              , self.map_nn_arch['latent_dim'])(labels)) #?
         
             # L2 normalization.
             x = Multiply()([x, l])
@@ -561,7 +559,7 @@ class StyleGAN(AbstractGAN):
             
             #x = BlurDepthwiseConv2D(padding='same')(x) #?
             if np.min(K.int_shape(x)[2:]) * 2 >= 128: #?  
-                x = FusedConv2D(self._cal_num_chs(res - 2)
+                x = FusedEqualizedLRConv2D(self._cal_num_chs(res - 2)
                                 , 3
                                 , padding='same')(x)
             else:

@@ -77,7 +77,20 @@ class TruncationTrick(Layer): #?
                                            , initializer=self.moving_mean_initializer
                                            , trainable=True) #?
 
-    def call(self, x):
+    def call(self, x, training=None):
+        def outputs_inference():
+            # Apply truncation trick according to cutoff.
+            num_layers = K.int_shape(x)[1]
+            
+            if self.cutoff is not None:
+                beta = Ke.where(np.arange(num_layers)[np.newaxis, :, np.newaxis] < self.cutoff
+                                , self.psi * np.ones(shape=(1, num_layers, 1), dtype=np.float32)
+                                , np.ones(shape=(1, num_layers, 1), dtype=np.float32)) #?
+            else:
+                beta = np.ones(shape=(1, num_layers, 1), dtype=np.float32)
+            
+            return self.moving_mean + (x - self.moving_mean) * beta #?            
+        
         # Update moving average.
         mean = K.mean(x[:, 0], axis=0) #?
         x_moving_mean = K.moving_average_update(self.moving_mean
@@ -94,7 +107,9 @@ class TruncationTrick(Layer): #?
         else:
             beta = np.ones(shape=(1, num_layers, 1), dtype=np.float32)
     
-        return x_moving_mean + (x - self.moving_mean) * beta #?
+        outputs = x_moving_mean + (x - self.moving_mean) * beta #?
+        
+        return K.in_train_phase(outputs, outputs_inference, training=training)
 
     def get_config(self):
         config = {'psi': self.psi

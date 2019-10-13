@@ -18,8 +18,8 @@ class EqualizedLRDense(Dense):
                 , units
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='random_normal'
-                , bias_initializer='random_normal'
+                , kernel_initializer='he_normal'
+                , bias_initializer='he_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -44,23 +44,27 @@ class EqualizedLRDense(Dense):
                  **kwargs)
 
     def build(self, input_shape):
+        he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        init_std = 1.0 / self.lrmul
+        self.runtime_coeff = he_std * self.lrmul
+        
+        def he_init(shape, dtype=None):
+            return K.random_normal(shape, mean=0., stddev=init_std)
+        
+        self.kernel_initializer = he_init
         super(EqualizedLRDense, self).build(input_shape)
 
-        self.he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
-        self.init_std = 1.0 / self.lrmul
-        self.runtime_coeff = self.he_std * self.lrmul
-
-    def call(self, inputs):
-        he_const = K.random_normal(K.int_shape(self.kernel), 0., self.init_std * self.runtime_coeff)
-        normalized_kernel = K.update(self.kernel, self.kernel / he_const) #?
-        output = K.dot(inputs, normalized_kernel)
+    def call(self, inputs):                    
+        scaled_kernel = self.kernel * self.runtime_coeff
+        outputs = K.dot(inputs, scaled_kernel)
 
         if self.use_bias:
-            output = K.bias_add(output, self.bias, data_format='channels_last')
+            outputs = K.bias_add(outputs, self.bias, data_format='channels_last')
         if self.activation is not None:
-            output = self.activation(output)
-        return output
-        
+            outputs = self.activation(outputs)
+
+        return outputs
+                
     def get_config(self):
         config = {'gain': self.gain
                   , 'lrmul': self.lrmul

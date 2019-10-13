@@ -54,9 +54,8 @@ def where(condition
 def cond(pred
          , true_fn=None
          , false_fn=None
-         , strict=False
          , name=None):
-    return tf.cond(pred, true_fn, false_fn, strict, name)
+    return tf.cond(pred, true_fn, false_fn, name)
 
 def broadcast_to(input
                  , shape

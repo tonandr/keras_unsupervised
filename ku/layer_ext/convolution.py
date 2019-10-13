@@ -25,8 +25,8 @@ class _EqualizedLRConv(Conv):
                  , dilation_rate=1
                  , activation=None
                  , use_bias=True
-                 , kernel_initializer='random_normal'
-                 , bias_initializer='random_normal'
+                 , kernel_initializer='he_normal'
+                 , bias_initializer='he_normal'
                  , kernel_regularizer=None
                  , bias_regularizer=None
                  , activity_regularizer=None
@@ -34,7 +34,7 @@ class _EqualizedLRConv(Conv):
                  , bias_constraint=None
                  , gain=np.sqrt(2) 
                  , lrmul=1 
-                 , **kwargs):
+                 , **kwargs):              
         self.gain = gain
         self.lrmul = lrmul
                         
@@ -57,20 +57,23 @@ class _EqualizedLRConv(Conv):
                                                , **kwargs)
 
     def build(self, input_shape): # Bias?
-        super(_EqualizedLRConv, self).build(input_shape)
+        he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        init_std = 1.0 / self.lrmul
+        self.runtime_coeff = he_std * self.lrmul
         
-        self.he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
-        self.init_std = 1.0 / self.lrmul
-        self.runtime_coeff = self.he_std * self.lrmul
+        def he_init(shape, dtype=None):
+            return K.random_normal(shape, mean=0., stddev=init_std)
+        
+        self.kernel_initializer = he_init
+        super(_EqualizedLRConv, self).build(input_shape)
 
-    def call(self, inputs):
-        he_const = K.random_normal(K.int_shape(self.kernel), 0., self.init_std * self.runtime_coeff)
-        normalized_kernel = K.update(self.kernel, self.kernel / he_const) #?
+    def call(self, inputs, training=None):
+        scaled_kernel = self.kernel * self.runtime_coeff
         
         if self.rank == 1:
             outputs = K.conv1d(
                 inputs,
-                normalized_kernel,
+                scaled_kernel,
                 strides=self.strides[0],
                 padding=self.padding,
                 data_format=self.data_format,
@@ -78,7 +81,7 @@ class _EqualizedLRConv(Conv):
         if self.rank == 2:
             outputs = K.conv2d(
                 inputs,
-                normalized_kernel,
+                scaled_kernel,
                 strides=self.strides,
                 padding=self.padding,
                 data_format=self.data_format,
@@ -86,7 +89,7 @@ class _EqualizedLRConv(Conv):
         if self.rank == 3:
             outputs = K.conv3d(
                 inputs,
-                normalized_kernel,
+                scaled_kernel,
                 strides=self.strides,
                 padding=self.padding,
                 data_format=self.data_format,
@@ -99,7 +102,7 @@ class _EqualizedLRConv(Conv):
                 data_format=self.data_format)
 
         if self.activation is not None:
-            return self.activation(outputs)
+            outputs = self.activation(outputs)
         return outputs
         
     def get_config(self):
@@ -107,6 +110,7 @@ class _EqualizedLRConv(Conv):
                   , 'lrmul': self.lrmul
         }
         base_config = super(_EqualizedLRConv, self).get_config()
+        base_config.pop('rank') #?
         return dict(list(base_config.items()) + list(config.items()))
 
 class EqualizedLRConv1D(_EqualizedLRConv):
@@ -121,8 +125,8 @@ class EqualizedLRConv1D(_EqualizedLRConv):
                 , dilation_rate=1
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='random_normal'
-                , bias_initializer='random_normal'
+                , kernel_initializer='he_normal'
+                , bias_initializer='he_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -130,10 +134,7 @@ class EqualizedLRConv1D(_EqualizedLRConv):
                 , bias_constraint=None
                 , gain=np.sqrt(2) 
                 , lrmul=1 
-                , **kwargs):
-        if padding == 'causal':
-            if data_format != 'channels_last':
-                raise ValueError('When padding is casual, data format must be channel_last.')        
+                , **kwargs):      
         super(EqualizedLRConv1D, self).__init__(filters 
                                                 , kernel_size
                                                 , rank=1
@@ -149,17 +150,14 @@ class EqualizedLRConv1D(_EqualizedLRConv):
                                                 , bias_regularizer=bias_regularizer
                                                 , activity_regularizer=activity_regularizer
                                                 , kernel_constraint=kernel_constraint
-                                                , bias_constraint=bias_constraint 
+                                                , bias_constraint=bias_constraint
+                                                , gain=gain
+                                                , lrmul=lrmul 
                                                 , **kwargs)
 
     def build(self, input_shape):
         super(EqualizedLRConv1D, self).build(input_shape)
         
-    def get_config(self):
-        base_config = super(EqualizedLRConv1D, self).get_config()
-        base_config.pop('rank') #?
-        return base_config
-
 class EqualizedLRConv2D(_EqualizedLRConv):
     """Equalized learning rate 2d convolution layer."""
     
@@ -172,8 +170,8 @@ class EqualizedLRConv2D(_EqualizedLRConv):
                 , dilation_rate=(1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='random_normal'
-                , bias_initializer='random_normal'
+                , kernel_initializer='he_normal'
+                , bias_initializer='he_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -197,17 +195,14 @@ class EqualizedLRConv2D(_EqualizedLRConv):
                                                 , bias_regularizer=bias_regularizer
                                                 , activity_regularizer=activity_regularizer
                                                 , kernel_constraint=kernel_constraint
-                                                , bias_constraint=bias_constraint 
+                                                , bias_constraint=bias_constraint
+                                                , gain=gain
+                                                , lrmul=lrmul  
                                                 , **kwargs)
 
     def build(self, input_shape):
         super(EqualizedLRConv2D, self).build(input_shape)
         
-    def get_config(self):
-        base_config = super(EqualizedLRConv2D, self).get_config()
-        base_config.pop('rank') #?
-        return base_config
-
 class EqualizedLRConv3D(_EqualizedLRConv):
     """Equalized learning rate 3d convolution layer."""
     
@@ -220,8 +215,8 @@ class EqualizedLRConv3D(_EqualizedLRConv):
                 , dilation_rate=(1, 1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='random_normal'
-                , bias_initializer='random_normal'
+                , kernel_initializer='he_normal'
+                , bias_initializer='he_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -229,7 +224,7 @@ class EqualizedLRConv3D(_EqualizedLRConv):
                 , bias_constraint=None
                 , gain=np.sqrt(2) 
                 , lrmul=1 
-                , **kwargs):    
+                , **kwargs):  
         super(EqualizedLRConv3D, self).__init__(filters
                 , kernel_size
                 , rank=3
@@ -246,18 +241,15 @@ class EqualizedLRConv3D(_EqualizedLRConv):
                 , activity_regularizer=activity_regularizer
                 , kernel_constraint=kernel_constraint
                 , bias_constraint=bias_constraint
+                , gain=gain
+                , lrmul=lrmul 
                 , **kwargs)
 
     def build(self, input_shape):
         super(EqualizedLRConv3D, self).build(input_shape)
         
-    def get_config(self):
-        base_config = super(EqualizedLRConv3D, self).get_config()
-        base_config.pop('rank') #?
-        return base_config
-
-class _FusedConv(Conv):
-    """Fused abstraction convolution layer."""
+class _FusedEqualizedLRConv(Conv):
+    """Fused, equalized learning rate abstraction convolution layer."""
     
     def __init__(self 
                 , filters
@@ -269,15 +261,19 @@ class _FusedConv(Conv):
                 , dilation_rate=1
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='glorot_uniform'
-                , bias_initializer='zeros'
+                , kernel_initializer='he_normal'
+                , bias_initializer='he_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
                 , kernel_constraint=None
                 , bias_constraint=None
-                , **kwargs):        
-        super(_FusedConv, self).__init__(rank
+                , gain=np.sqrt(2)
+                , lrmul=1
+                , **kwargs):
+        self.gain = gain
+        self.lrmul = lrmul        
+        super(_FusedEqualizedLRConv, self).__init__(rank
                 , filters
                 , kernel_size
                 , strides=strides
@@ -296,46 +292,56 @@ class _FusedConv(Conv):
                 , **kwargs)
 
     def build(self, input_shape):
-        super(_FusedConv, self).build(input_shape)
+        he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        init_std = 1.0 / self.lrmul
+        self.runtime_coeff = he_std * self.lrmul
         
-    def call(self, inputs):
+        def he_init(shape, dtype=None):
+            return K.random_normal(shape, mean=0., stddev=init_std)
+        
+        self.kernel_initializer = he_init
+        super(_FusedEqualizedLRConv, self).build(input_shape)
+        
+    def call(self, inputs): #?
+        scaled_kernel = self.kernel * self.runtime_coeff
+        
         if self.rank == 1:
-            kernel = Ke.pad(self.kernel
+            kernel = Ke.pad(scaled_kernel
                             , [[1,1], [0,0], [0,0]])
-            kernel = Ke.add_n([kernel[1:]
-                               , kernel[:-1]])
+            fused_kernel = Ke.add_n([kernel[1:]
+                               , kernel[:-1]]) / 2.0
             outputs = K.conv1d(inputs
-                , kernel
+                , fused_kernel
                 , strides=self.strides[0]
                 , padding=self.padding
                 , data_format=self.data_format
                 , dilation_rate=self.dilation_rate[0])
         if self.rank == 2:
-            kernel = Ke.pad(self.kernel
+            kernel = Ke.pad(scaled_kernel
                             , [[1,1], [1,1], [0,0], [0,0]])
-            kernel = Ke.add_n([kernel[1:, 1:]
+            fused_kernel = Ke.add_n([kernel[1:, 1:]
                                , kernel[:-1, 1:]
                                , kernel[1:, :-1]
-                               , kernel[:-1, :-1]])
+                               , kernel[:-1, :-1]]) / 4.0
             outputs = K.conv2d(inputs
-                , kernel
+                , fused_kernel
                 , strides=self.strides
                 , padding=self.padding
                 , data_format=self.data_format
                 , dilation_rate=self.dilation_rate)
         if self.rank == 3:
-            kernel = Ke.pad(self.kernel
+            kernel = Ke.pad(scaled_kernel
                             , [[1,1], [1,1], [1,1], [0,0], [0,0]])
-            kernel = Ke.add_n([kernel[1:, 1:, 1:]
+            fused_kernel = Ke.add_n([kernel[1:, 1:, 1:]
                                , kernel[1:, 1:, :-1]
                                , kernel[1:, :-1, 1:]
                                , kernel[1:, :-1, :-1]
                                , kernel[:-1, 1:, 1:]
                                , kernel[:-1, 1:, :-1]
                                , kernel[:-1, :-1, 1:]
-                               , kernel[:-1, :-1, :-1]])
+                               , kernel[:-1, :-1, :-1]]) / 8.0
             outputs = K.conv3d(inputs
-                , kernel
+                , fused_kernel
                 , strides=self.strides
                 , padding=self.padding
                 , data_format=self.data_format
@@ -351,12 +357,15 @@ class _FusedConv(Conv):
         return outputs        
 
     def get_config(self):
-        base_config = super(EqualizedLRConv3D, self).get_config()
+        config = {'gain': self.gain
+                  , 'lrmul': self.lrmul
+        }
+        base_config = super(_EqualizedLRConv, self).get_config()
         base_config.pop('rank') #?
-        return base_config
+        return dict(list(base_config.items()) + list(config.items()))
     
-class FusedConv1D(_FusedConv):
-    """Fused 1d convolution layer."""
+class FusedEqualizedLRConv1D(_FusedEqualizedLRConv):
+    """Fused, equalized learning rate 1d convolution layer."""
     
     def __init__(self 
                 , filters
@@ -374,8 +383,10 @@ class FusedConv1D(_FusedConv):
                 , activity_regularizer=None
                 , kernel_constraint=None
                 , bias_constraint=None
+                , gain=np.sqrt(2) 
+                , lrmul=1 
                 , **kwargs):        
-        super(FusedConv1D, self).__init__(filters
+        super(FusedEqualizedLRConv1D, self).__init__(filters
                 , kernel_size
                 , strides=strides
                 , rank=1
@@ -391,13 +402,15 @@ class FusedConv1D(_FusedConv):
                 , activity_regularizer=activity_regularizer
                 , kernel_constraint=kernel_constraint
                 , bias_constraint=bias_constraint
+                , gain=gain
+                , lrmul=lrmul 
                 , **kwargs)
 
     def build(self, input_shape):
-        super(FusedConv1D, self).build(input_shape)
+        super(FusedEqualizedLRConv1D, self).build(input_shape)
 
-class FusedConv2D(_FusedConv):
-    """Fused 2d convolution layer."""
+class FusedEqualizedLRConv2D(_FusedEqualizedLRConv):
+    """Fused, equalized learning rate 2d convolution layer."""
     
     def __init__(self 
                 , filters
@@ -415,8 +428,10 @@ class FusedConv2D(_FusedConv):
                 , activity_regularizer=None
                 , kernel_constraint=None
                 , bias_constraint=None
+                , gain=np.sqrt(2) 
+                , lrmul=1 
                 , **kwargs):        
-        super(FusedConv2D, self).__init__(filters
+        super(FusedEqualizedLRConv2D, self).__init__(filters
                 , kernel_size
                 , rank=2
                 , strides=strides
@@ -431,14 +446,16 @@ class FusedConv2D(_FusedConv):
                 , bias_regularizer=bias_regularizer
                 , activity_regularizer=activity_regularizer
                 , kernel_constraint=kernel_constraint
-                , bias_constraint=bias_constraint 
+                , bias_constraint=bias_constraint
+                , gain=gain
+                , lrmul=lrmul  
                 , **kwargs)
 
     def build(self, input_shape):
-        super(FusedConv2D, self).build(input_shape)
+        super(FusedEqualizedLRConv2D, self).build(input_shape)
 
-class FusedConv3D(_FusedConv):
-    """Fused 3d convolution layer."""
+class FusedEqualizedLRConv3D(_FusedEqualizedLRConv):
+    """Fused, equalized learning rate 3d convolution layer."""
     
     def __init__(self 
                 , filters
@@ -456,8 +473,10 @@ class FusedConv3D(_FusedConv):
                 , activity_regularizer=None
                 , kernel_constraint=None
                 , bias_constraint=None
+                , gain=np.sqrt(2) 
+                , lrmul=1 
                 , **kwargs):        
-        super(FusedConv3D, self).__init__(filters
+        super(FusedEqualizedLRConv3D, self).__init__(filters
                 , kernel_size
                 , rank=3
                 , strides=strides
@@ -473,13 +492,15 @@ class FusedConv3D(_FusedConv):
                 , activity_regularizer=activity_regularizer
                 , kernel_constraint=kernel_constraint
                 , bias_constraint=bias_constraint
+                , gain=gain
+                , lrmul=lrmul 
                 , **kwargs)
 
     def build(self, input_shape):
-        super(FusedConv3D, self).build(input_shape)
+        super(FusedEqualizedLRConv3D, self).build(input_shape)
 
-class FusedConv2DTranspose(Conv2DTranspose):
-    """Fused 2d transposed convolution layer."""
+class FusedEqualizedLRConv2DTranspose(Conv2DTranspose): #?
+    """Fused, equalized learning rate 2d transposed convolution layer."""
     
     def __init__(self 
                 , filters
@@ -490,15 +511,19 @@ class FusedConv2DTranspose(Conv2DTranspose):
                 , dilation_rate=(1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='glorot_uniform'
-                , bias_initializer='zeros'
+                , kernel_initializer='he_normal'
+                , bias_initializer='he_normal'
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
                 , kernel_constraint=None
                 , bias_constraint=None
-                , **kwargs):        
-        super(FusedConv2DTranspose, self).__init__(filters
+                , gain=np.sqrt(2) 
+                , lrmul=1 
+                , **kwargs):
+        self.gain = gain
+        self.lrmul = lrmul        
+        super(FusedEqualizedLRConv2DTranspose, self).__init__(filters
                 , kernel_size
                 , strides=strides
                 , padding=padding
@@ -516,12 +541,20 @@ class FusedConv2DTranspose(Conv2DTranspose):
                 , **kwargs)
 
     def build(self, input_shape):
-        super(FusedConv2DTranspose, self).build(input_shape)
+        he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
+        init_std = 1.0 / self.lrmul
+        self.runtime_coeff = he_std * self.lrmul
+        
+        def he_init(shape, dtype=None):
+            return K.random_normal(shape, mean=0., stddev=init_std)
+        
+        self.kernel_initializer = he_init
+        super(FusedEqualizedLRConv2DTranspose, self).build(input_shape)
 
     def call(self, inputs):
         input_shape = K.shape(inputs)
         batch_size = input_shape[0]
-        if self.data_format == 'channels_first':
+        if self.data_format == 'channels_first': #?
             h_axis, w_axis = 2, 3
         else:
             h_axis, w_axis = 1, 2
@@ -552,15 +585,16 @@ class FusedConv2DTranspose(Conv2DTranspose):
         else:
             output_shape = (batch_size, out_height, out_width, self.filters)
 
-        kernel = Ke.transpose(self.kernel,[0, 1, 3, 2]) #?
+        scaled_kernel = self.kernel * self.runtime_coeff
+        kernel = Ke.transpose(scaled_kernel,[0, 1, 3, 2]) #?
         kernel = Ke.pad(kernel
-                            , [[1,1], [1,1], [0,0], [0,0]])
-        kernel = Ke.add_n([kernel[1:, 1:]
+                            , [[1,1], [1,1], [0,0], [0,0]]) 
+        fused_kernel = Ke.add_n([kernel[1:, 1:]
                                , kernel[:-1, 1:]
                                , kernel[1:, :-1]
-                               , kernel[:-1, :-1]])        
+                               , kernel[:-1, :-1]]) #?       
         outputs = K.conv2d_transpose(inputs
-            , kernel
+            , fused_kernel
             , output_shape
             , self.strides
             , padding=self.padding
@@ -580,7 +614,6 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
     """Blur 2d depthwise convolution layer."""
     
     def __init__(self
-                , kernel_size=(1, 1)
                 , blur_kernel=[1, 2, 1]
                 , strides=(1, 1)
                 , padding='valid'
@@ -598,7 +631,7 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
                 , bias_constraint=None
                 , **kwargs):
         self.blur_kernel = blur_kernel      
-        super(BlurDepthwiseConv2D, self).__init__(kernel_size=kernel_size
+        super(BlurDepthwiseConv2D, self).__init__(kernel_size=(3, 3)
                 , strides=strides
                 , padding=padding
                 , depth_multiplier=depth_multiplier
@@ -635,16 +668,34 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
         blur_filter = blur_filter[::-1, ::-1] #?
         blur_filter = blur_filter[:, :, np.newaxis, np.newaxis]
         blur_filter = np.tile(blur_filter, [1, 1, input_dim, self.depth_multiplier])
-        self.depthwise_kernel = K.constant(blur_filter) #?
+        self.kernel_size = blur_filter.shape[:2]
+        
+        def depthwise_init(shape, dtype=None):
+            return K.constant(blur_filter)
+        
+        depthwise_kernel_shape = (self.kernel_size[0],
+                                  self.kernel_size[1],
+                                  input_dim,
+                                  self.depth_multiplier)
+
+        self.depthwise_kernel = self.add_weight(
+            shape=depthwise_kernel_shape,
+            initializer=depthwise_init,
+            name='blur_depthwise_kernel',
+            regularizer=self.depthwise_regularizer,
+            constraint=self.depthwise_constraint,
+            trainable=False)
         
         if self.use_bias:
             self.bias = self.add_weight(shape=(input_dim * self.depth_multiplier,)
                                         , initializer=self.bias_initializer
                                         , name='bias'
                                         , regularizer=self.bias_regularizer
-                                        , constraint=self.bias_constraint)
+                                        , constraint=self.bias_constraint
+                                        , trainable=False)
         else:
             self.bias = None
+            
         # Set input spec.
         self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
         self.built = True
@@ -652,5 +703,5 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
     def get_config(self):
         config = {'blur_kernel': self.blur_kernel
         }
-        base_config = super(_EqualizedLRConv, self).get_config()
+        base_config = super(BlurDepthwiseConv2D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

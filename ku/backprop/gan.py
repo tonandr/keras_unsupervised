@@ -5,6 +5,7 @@ from __future__ import print_function
 from abc import ABC, abstractmethod
 from functools import partial
 
+import tensorflow as tf
 from tensorflow.python.keras.layers import Input, Lambda
 from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.utils import multi_gpu_model
@@ -126,21 +127,23 @@ class AbstractGAN(ABC):
         
         # Design gan according to input and output nodes for each model.        
         # Design and compile disc_ext.
-        x_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]  
+        disc_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc_inputs]  
         x_outputs = [self.disc(x_inputs)]
         
-        z_inputs = self.gen.inputs
+        gen_inputs = self.gen.inputs
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen_inputs] 
         
         if self.conf['multi_gpu']:
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
                
         self.gen.trainable = False
         for layer in self.gen.layers: layer.trainable = False
-        self.gen.name ='gen'    
+        #self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.trainable = True
         for layer in self.disc.layers: layer.trainable = True
-        self.disc.name = 'disc'
+        #self.disc.name = 'disc'
         x2_outputs = [self.disc(z_outputs)]
         
         self.disc_ext = Model(inputs=x_inputs + z_inputs, outputs=x_outputs + x2_outputs)        
@@ -170,7 +173,8 @@ class AbstractGAN(ABC):
                                     , loss_weights=self.disc_ext_loss_weights)                    
                
         # Design and compile gen_disc.
-        z_inputs = self.gen.inputs
+        gen_inputs = self.gen.inputs
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen_inputs] 
         self.gen.trainable = True
         for layer in self.gen.layers: layer.trainable = True    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
@@ -204,22 +208,24 @@ class AbstractGAN(ABC):
         # Design gan according to input and output nodes for each model.        
         # Design and compile disc_ext.
         # x.
-        x_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]  
+        disc_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc_inputs]  
         x_outputs = [self.disc(x_inputs)]
         
         # x_tilda.
-        z_inputs = self.gen.inputs
+        gen_inputs = self.gen.inputs
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen_inputs] 
         
         if self.conf['multi_gpu']:
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
                
         self.gen.trainable = False
         for layer in self.gen.layers: layer.trainable = False
-        self.gen.name ='gen'    
+        #self.gen.name ='gen'    
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
         self.disc.trainable = True
         for layer in self.disc.layers: layer.trainable = True 
-        self.disc.name = 'disc'
+        #self.disc.name = 'disc'
         x2_outputs = [self.disc(z_outputs)]
         
         # x_hat.
@@ -259,7 +265,8 @@ class AbstractGAN(ABC):
                                     , loss_weights=self.disc_ext_loss_weights)                     
                
         # Design and compile gen_disc.
-        z_inputs = self.gen.inputs
+        gen_inputs = self.gen.inputs
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen_inputs] 
         self.gen.trainable = True
         for layer in self.gen.layers: layer.trainable = True
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
@@ -293,27 +300,29 @@ class AbstractGAN(ABC):
         # Design gan according to input and output nodes for each model.        
         # Design and compile disc_ext.
         # x.
-        x_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]  
+        disc_inputs = self.disc.inputs if self.nn_arch['label_usage'] else [self.disc.inputs]
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc_inputs] 
         x_outputs = [self.disc(x_inputs)]
         
         # x_tilda.
-        z_inputs = self.gen.inputs
+        gen_inputs = self.gen.inputs
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen_inputs]  
         
         if self.conf['multi_gpu']:
             self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
 
-        self.gen.name ='gen'                  
+        #self.gen.name ='gen'                  
         self.gen.trainable = False
         for layer in self.gen.layers: layer.trainable = False
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]
 
-        self.disc.name = 'disc'
+        #self.disc.name = 'disc'
         self.disc.trainable = True
         for layer in self.disc.layers: layer.trainable = True
         x2_outputs = [self.disc(z_outputs)]
                 
         self.disc_ext = Model(inputs=x_inputs + z_inputs
-                              , outputs=x_outputs +  x_outputs + x2_outputs)        
+                              , outputs=x_outputs + x_outputs + x2_outputs)        
     
         opt = optimizers.Adam(lr=self.hps['lr']
                                     , beta_1=self.hps['beta_1']
@@ -342,7 +351,8 @@ class AbstractGAN(ABC):
                                     , loss_weights=self.disc_ext_loss_weights)                    
                
         # Design and compile gen_disc.
-        z_inputs = self.gen.inputs
+        gen_inputs = self.gen.inputs
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen_inputs] 
         self.gen.trainable = True
         for layer in self.gen.layers: layer.trainable = True     
         z_outputs = self.gen(z_inputs) if self.nn_arch['label_usage'] else [self.gen(z_inputs)]

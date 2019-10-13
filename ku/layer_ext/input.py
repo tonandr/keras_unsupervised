@@ -16,7 +16,7 @@ class InputVariable(Layer): #?
     
     def __init__(self
                  , shape
-                 , variable_initializer=initializers.Ones()
+                 , variable_initializer=initializers.Ones() #?
                  , **kwargs):
         self.shape=shape
         self.variable_initializer=initializers.get(variable_initializer)
@@ -27,10 +27,10 @@ class InputVariable(Layer): #?
         self.variable_weight = self.add_weight(name='variable_weight'
                                  , shape=tuple(list(self.shape))
                                  , initializer=self.variable_initializer # Which initializer is optimal?
-                                 , trainable=True)  
+                                 , trainable=self.trainable) #?  
 
     def call(self, x):
-        return K.identity(self.variable_weight)
+        return self.variable_weight #?
 
     def get_config(self):
         config = {'shape': self.shape
@@ -64,11 +64,11 @@ class InputRandomUniform(Layer):
         super(InputRandomUniform, self).build(input_shape)
 
     def call(self, x):        
-        return K.identity(K.random_uniform(shape=self.shape
+        return K.random_uniform(shape=self.shape
                                 , minval=self.minval
                                 , maxval=self.maxval
                                 , dtype=self.dtype
-                                , seed=self.seed))
+                                , seed=self.seed) #?
 
     def get_config(self):
         config = {'shape': self.shape
