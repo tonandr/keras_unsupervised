@@ -6,10 +6,10 @@ from abc import ABC, abstractmethod
 from functools import partial
 
 import tensorflow as tf
-from tensorflow.python.keras.layers import Input, Lambda
-from tensorflow.python.keras.models import Model, load_model
-from tensorflow.python.keras.utils import multi_gpu_model
-from tensorflow.python.keras import optimizers
+from tensorflow.keras.layers import Input, Lambda
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.utils import multi_gpu_model
+from tensorflow.keras import optimizers
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 import tensorflow.keras.backend as K
 
