@@ -26,7 +26,27 @@ from tensorflow.python.ops import summary_ops_v2
 import tensorflow.keras.backend as K
 
 class TensorBoardExt(TensorBoard):
-    def on_train_batch_end(self, batch, logs=None):
+    def __init__(self
+               , log_dir='logs'
+               , histogram_freq=0
+               , write_graph=True
+               , write_images=False
+               , update_freq='epoch'
+               , profile_batch=2
+               , embeddings_freq=0
+               , embeddings_metadata=None
+               , **kwargs):
+        super(TensorBoardExt, self).__init__(log_dir=log_dir
+               , histogram_freq=histogram_freq
+               , write_graph=write_graph
+               , write_images=write_images
+               , update_freq=update_freq
+               , profile_batch=profile_batch
+               , embeddings_freq=embeddings_freq
+               , embeddings_metadata=embeddings_metadata
+               , **kwargs)
+    
+    def on_batch_end(self, batch, logs=None):
         """Writes scalar summaries for metrics on every training batch.
         Performs profiling if current batch is in profiler_batches.
         
@@ -37,25 +57,22 @@ class TensorBoardExt(TensorBoard):
             logs: Dict
                  Metric results for this batch.
         """
-        if self.update_freq == 'epoch' and self._profile_batch is None:
-            return
-        
+                
         # Don't output batch_size and batch number as TensorBoard summaries
         logs = logs or {}
-        train_batches = self._total_batches_seen[self._train_run_name]
-        if self.update_freq != 'epoch' and batch % self.update_freq == 0:
-            self._log_metrics(logs, prefix='batch_', step=train_batches)
-            self._log_weights(prefix='batch', step=train_batches)
-        
-        self._increment_step(self._train_run_name)
-        
-        if context.executing_eagerly():
-            if self._is_tracing:
-                self._log_trace()
-            elif (not self._is_tracing and
-                math_ops.equal(train_batches, self._profile_batch - 1)):
-                self._enable_trace()
-        
+        self._samples_seen += logs.get('size', 1)
+        samples_seen_since = self._samples_seen - self._samples_seen_at_last_write
+        if self.update_freq != 'epoch' and samples_seen_since >= self.update_freq:
+            self._log_metrics(logs, prefix='batch_', step=self._total_batches_seen)
+            self._log_weights('batch', step=self._total_batches_seen)
+            self._samples_seen_at_last_write = self._samples_seen
+        self._total_batches_seen += 1
+        if self._is_tracing:
+            self._log_trace()
+        elif (not self._is_tracing and
+                self._total_batches_seen == self._profile_batch - 1):
+            self._enable_trace()
+                
     def _log_weights(self, prefix, step):
         """Logs the weights of the Model to TensorBoard.
         
@@ -82,10 +99,11 @@ class TensorBoardExt(TensorBoard):
 
     def on_epoch_end(self, epoch, logs=None):
         """Runs metrics and histogram summaries at epoch end."""
-        self._log_metrics(logs, prefix='epoch_', step=epoch)
+        step = epoch if self.update_freq == 'epoch' else self._samples_seen
+        self._log_metrics(logs, prefix='epoch_', step=step)
     
         if self.histogram_freq and epoch % self.histogram_freq == 0: #?
-            self._log_weights(prefix='epoch', epoch)
+            self._log_weights('epoch', epoch)
     
         if self.embeddings_freq and epoch % self.embeddings_freq == 0:
             self._log_embeddings(epoch)          

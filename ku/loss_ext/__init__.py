@@ -9,3 +9,14 @@ from .loss import softplus_non_sat_loss
 from .loss import softplus_loss
 from .loss import r_penalty_loss
 from .loss import softplus_non_sat_r_penalty_loss
+from .loss import GenDiscRegularLoss1
+from .loss import GenDiscRegularLoss2
+from .loss import GenDiscWGANLoss
+from .loss import DiscExtRegularLoss1
+from .loss import DiscExtRegularLoss2
+from .loss import DiscExtWGANLoss
+from .loss import DiscExtWGANGPLoss
+from .loss import SoftPlusNonSatLoss
+from .loss import SoftPlusLoss
+from .loss import RPenaltyLoss
+from .loss import SoftPlusNonSatRPenaltyLoss

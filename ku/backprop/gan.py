@@ -7,16 +7,17 @@ from functools import partial
 
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Lambda
-from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras import optimizers
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 import tensorflow.keras.backend as K
 
+from ..engine_ext import ModelExt
 from ..layer_ext import InputRandomUniform
-from ..loss_ext import disc_ext_regular_loss1, disc_ext_regular_loss2, gen_disc_regular_loss1, gen_disc_regular_loss2
-from ..loss_ext import gen_disc_wgan_loss, disc_ext_wgan_loss, disc_ext_wgan_gp_loss
-from ..loss_ext import softplus_non_sat_loss, softplus_loss, r_penalty_loss, softplus_non_sat_r_penalty_loss
+from ..loss_ext import DiscExtRegularLoss1, DiscExtRegularLoss2, GenDiscRegularLoss1, GenDiscRegularLoss2
+from ..loss_ext import GenDiscWGANLoss, DiscExtWGANLoss, DiscExtWGANGPLoss
+from ..loss_ext import SoftPlusNonSatLoss, SoftPlusLoss, RPenaltyLoss, SoftPlusNonSatRPenaltyLoss
 
 # GAN mode.
 REGULAR_GAN = 0
@@ -44,7 +45,7 @@ class AbstractGAN(ABC):
                 if not hasattr(self, 'custom_objects'):
                     RuntimeError('Before models, custom_objects must be created.')
                 
-                self.custom_objects['gen_disc_regular_loss2'] = gen_disc_regular_loss2
+                self.custom_objects['GenDiscRegularLoss2'] = GenDiscRegularLoss2
                                                             
                 with CustomObjectScope(self.custom_objects): 
                     # gen_disc.
@@ -62,7 +63,7 @@ class AbstractGAN(ABC):
                 if not hasattr(self, 'custom_objects'):
                     RuntimeError('Before models, custom_objects must be created.')
                 
-                self.custom_objects['gen_disc_wgan_loss'] = gen_disc_wgan_loss
+                self.custom_objects['GenDiscWGANLoss'] = GenDiscWGANLoss
                                                             
                 with CustomObjectScope(self.custom_objects): 
                     # gen_disc.
@@ -80,7 +81,7 @@ class AbstractGAN(ABC):
                 if not hasattr(self, 'custom_objects'):
                     RuntimeError('Before models, custom_objects must be created.')
                 
-                self.custom_objects['soft_non_sat_loss'] = softplus_non_sat_loss
+                self.custom_objects['SoftPlusNonSatLoss'] = SoftPlusNonSatLoss
                                                             
                 with CustomObjectScope(self.custom_objects): 
                     # gen_disc.
@@ -146,7 +147,7 @@ class AbstractGAN(ABC):
         #self.disc.name = 'disc'
         x2_outputs = [self.disc(z_outputs)]
         
-        self.disc_ext = Model(inputs=x_inputs + z_inputs, outputs=x_outputs + x2_outputs)        
+        self.disc_ext = ModelExt(inputs=x_inputs + z_inputs, outputs=x_outputs + x2_outputs)        
     
         opt = optimizers.Adam(lr=self.hps['lr']
                                     , beta_1=self.hps['beta_1']
@@ -154,8 +155,8 @@ class AbstractGAN(ABC):
                                     , decay=self.hps['decay'])
 
         # Make losses.        
-        self.disc_ext_losses = [disc_ext_regular_loss1
-                                , disc_ext_regular_loss2]
+        self.disc_ext_losses = [DiscExtRegularLoss1()
+                                , DiscExtRegularLoss2()] #?
         self.disc_ext_loss_weights = [-1.0, -1.0]
 
         if hasattr(self, 'disc_ext_losses') == False \
@@ -164,13 +165,15 @@ class AbstractGAN(ABC):
                     
         self.disc_ext.compile(optimizer=opt
                          , loss=self.disc_ext_losses
-                         , loss_weights=self.disc_ext_loss_weights)
+                         , loss_weights=self.disc_ext_loss_weights
+                         , run_eagerly=True)
         
         if self.conf['multi_gpu']:
             self.disc_ext_p = multi_gpu_model(self.disc_ext, gpus=self.conf['num_gpus'])
             self.disc_ext_p.compile(optimizer=opt
                                     , loss=self.disc_ext.losses
-                                    , loss_weights=self.disc_ext_loss_weights)                    
+                                    , loss_weights=self.disc_ext_loss_weights
+                                    , run_eagerly=True)                    
                
         # Design and compile gen_disc.
         gen_inputs = self.gen.inputs
@@ -182,10 +185,10 @@ class AbstractGAN(ABC):
         for layer in self.disc.layers: layer.trainable = False
         z_p_outputs = [self.disc(z_outputs)]
 
-        self.gen_disc = Model(inputs=z_inputs, outputs=z_p_outputs)
+        self.gen_disc = ModelExt(inputs=z_inputs, outputs=z_p_outputs)
         
         # Make losses.        
-        self.gen_disc_losses = [gen_disc_regular_loss2]
+        self.gen_disc_losses = [GenDiscRegularLoss2()]
         self.gen_disc_loss_weights = [-1.0]
         
         if hasattr(self, 'gen_disc_losses') == False \
@@ -194,13 +197,15 @@ class AbstractGAN(ABC):
         
         self.gen_disc.compile(optimizer=opt
                          , loss=self.gen_disc_losses
-                         , loss_weights=self.gen_disc_loss_weights)
+                         , loss_weights=self.gen_disc_loss_weights
+                         , run_eagerly=True)
 
         if self.conf['multi_gpu']:
             self.gen_disc_p = multi_gpu_model(self.gen_disc, gpus=self.conf['num_gpus'])
             self.gen_disc_p.compile(optimizer=opt
                          , loss=self.gen_disc_losses
-                         , loss_weights=self.gen_disc_loss_weights)
+                         , loss_weights=self.gen_disc_loss_weights
+                         , run_eagerly=True)
 
     def _compile_wgan_gp(self):
         """Compile wgan_gp."""
@@ -234,7 +239,7 @@ class AbstractGAN(ABC):
         x3 = Lambda(lambda x: x[2] * x[1] + (1.0 - x[2]) * x[0])([x_inputs[0]] + [z_outputs[0]] + x3_epsilon)
         x3_outputs = [self.disc([x3, x_inputs[1]])]
         
-        self.disc_ext = Model(inputs=x_inputs + z_inputs + x3_inputs
+        self.disc_ext = ModelExt(inputs=x_inputs + z_inputs + x3_inputs
                               , outputs=x_outputs + x2_outputs + x3_outputs)        
     
         opt = optimizers.Adam(lr=self.hps['lr']
@@ -243,9 +248,9 @@ class AbstractGAN(ABC):
                                     , decay=self.hps['decay'])
 
         # Make losses.        
-        self.disc_ext_losses = [disc_ext_wgan_loss
-                                , disc_ext_wgan_loss
-                                , disc_ext_wgan_gp_loss(input_variables=x3
+        self.disc_ext_losses = [DiscExtWGANLoss()
+                                , DiscExtWGANLoss()
+                                , DiscExtWGANGPLoss(input_variables=x3
                                                         , wgan_lambda=self.conf['hps']['wgan_lambda']
                                                         , wgan_target=self.conf['hps']['wgan_target'])]
         self.disc_ext_loss_weights = [-1.0, 1.0, 1.0]
@@ -256,13 +261,15 @@ class AbstractGAN(ABC):
                     
         self.disc_ext.compile(optimizer=opt
                          , loss=self.disc_ext_losses
-                         , loss_weights=self.disc_ext_loss_weights)
+                         , loss_weights=self.disc_ext_loss_weights
+                         , run_eagerly=True)
         
         if self.conf['multi_gpu']:
             self.disc_ext_p = multi_gpu_model(self.disc_ext, gpus=self.conf['num_gpus'])
             self.disc_ext_p.compile(optimizer=opt
                                     , loss=self.disc_ext.losses
-                                    , loss_weights=self.disc_ext_loss_weights)                     
+                                    , loss_weights=self.disc_ext_loss_weights
+                                    , run_eagerly=True)                     
                
         # Design and compile gen_disc.
         gen_inputs = self.gen.inputs
@@ -274,10 +281,10 @@ class AbstractGAN(ABC):
         for layer in self.disc.layers: layer.trainable = False
         z_p_outputs = [self.disc(z_outputs)]
 
-        self.gen_disc = Model(inputs=z_inputs, outputs=z_p_outputs)
+        self.gen_disc = ModelExt(inputs=z_inputs, outputs=z_p_outputs)
         
         # Make losses.
-        self.gen_disc_losses = [gen_disc_wgan_loss]
+        self.gen_disc_losses = [DiscExtWGANLoss()]
         self.gen_disc_loss_weights = [-1.0]
         
         if hasattr(self, 'gen_disc_losses') == False \
@@ -286,13 +293,15 @@ class AbstractGAN(ABC):
                 
         self.gen_disc.compile(optimizer=opt
                          , loss=self.gen_disc_losses
-                         , loss_weights=self.gen_disc_loss_weights)
+                         , loss_weights=self.gen_disc_loss_weights
+                         , run_eagerly=True)
 
         if self.conf['multi_gpu']:
             self.gen_disc_p = multi_gpu_model(self.gen_disc, gpus=self.conf['num_gpus'])
             self.gen_disc_p.compile(optimizer=opt
                          , loss=self.gen_disc_losses
-                         , loss_weights=self.gen_disc_loss_weights)
+                         , loss_weights=self.gen_disc_loss_weights
+                         , run_eagerly=True)
 
     def _compile_gan_with_non_sat_rl_loss(self):
         """Compile gan with non-saturation and r1 loss."""
@@ -321,7 +330,7 @@ class AbstractGAN(ABC):
         for layer in self.disc.layers: layer.trainable = True
         x2_outputs = [self.disc(z_outputs)]
                 
-        self.disc_ext = Model(inputs=x_inputs + z_inputs
+        self.disc_ext = ModelExt(inputs=x_inputs + z_inputs
                               , outputs=x_outputs + x_outputs + x2_outputs)        
     
         opt = optimizers.Adam(lr=self.hps['lr']
@@ -330,10 +339,12 @@ class AbstractGAN(ABC):
                                     , decay=self.hps['decay'])
 
         # Make losses.        
-        self.disc_ext_losses = [softplus_non_sat_loss
-                                , r_penalty_loss(input_variables = x_inputs[0] 
-                                                        , r_gamma=self.conf['hps']['r_gamma'])
-                                , softplus_loss]
+        self.disc_ext_losses = [SoftPlusNonSatLoss(name='real_loss')
+                                , RPenaltyLoss(name='r_penalty_loss'
+                                               , model = self.disc_ext
+                                               , input_variable_orders = [0] 
+                                               , r_gamma=self.conf['hps']['r_gamma'])
+                                , SoftPlusLoss(name='fake_loss')]
         self.disc_ext_loss_weights = [1.0, 1.0, 1.0]
 
         if hasattr(self, 'disc_ext_losses') == False \
@@ -342,13 +353,15 @@ class AbstractGAN(ABC):
                     
         self.disc_ext.compile(optimizer=opt
                          , loss=self.disc_ext_losses
-                         , loss_weights=self.disc_ext_loss_weights)
+                         , loss_weights=self.disc_ext_loss_weights
+                         , run_eagerly=True)
         
         if self.conf['multi_gpu']:
             self.disc_ext_p = multi_gpu_model(self.disc_ext, gpus=self.conf['num_gpus'])
             self.disc_ext_p.compile(optimizer=opt
                                     , loss=self.disc_ext.losses
-                                    , loss_weights=self.disc_ext_loss_weights)                    
+                                    , loss_weights=self.disc_ext_loss_weights
+                                    , run_eagerly=True)                    
                
         # Design and compile gen_disc.
         gen_inputs = self.gen.inputs
@@ -361,10 +374,10 @@ class AbstractGAN(ABC):
         for layer in self.disc.layers: layer.trainable = False
         z_p_outputs = [self.disc(z_outputs)]
 
-        self.gen_disc = Model(inputs=z_inputs, outputs=z_p_outputs)
+        self.gen_disc = ModelExt(inputs=z_inputs, outputs=z_p_outputs)
         
         # Make losses.
-        self.gen_disc_losses = [softplus_non_sat_loss]
+        self.gen_disc_losses = [SoftPlusNonSatLoss()]        
         self.gen_disc_loss_weights = [1.0]
         
         if hasattr(self, 'gen_disc_losses') == False \
@@ -373,13 +386,15 @@ class AbstractGAN(ABC):
                 
         self.gen_disc.compile(optimizer=opt
                          , loss=self.gen_disc_losses #?
-                         , loss_weights=self.gen_disc_loss_weights)
+                         , loss_weights=self.gen_disc_loss_weights
+                         , run_eagerly=True)
 
         if self.conf['multi_gpu']:
             self.gen_disc_p = multi_gpu_model(self.gen_disc, gpus=self.conf['num_gpus'])
             self.gen_disc_p.compile(optimizer=opt
                          , loss=self.gen_disc_losses
-                         , loss_weights=self.gen_disc_loss_weights)                
+                         , loss_weights=self.gen_disc_loss_weights
+                         , run_eagerly=True)                
     
     @abstractmethod  
     def fit_generator(self

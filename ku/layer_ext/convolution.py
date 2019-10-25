@@ -110,7 +110,7 @@ class _EqualizedLRConv(Conv):
                   , 'lrmul': self.lrmul
         }
         base_config = super(_EqualizedLRConv, self).get_config()
-        base_config.pop('rank') #?
+        #base_config.pop('rank') #?
         return dict(list(base_config.items()) + list(config.items()))
 
 class EqualizedLRConv1D(_EqualizedLRConv):
@@ -361,7 +361,7 @@ class _FusedEqualizedLRConv(Conv):
                   , 'lrmul': self.lrmul
         }
         base_config = super(_EqualizedLRConv, self).get_config()
-        base_config.pop('rank') #?
+        #base_config.pop('rank') #?
         return dict(list(base_config.items()) + list(config.items()))
     
 class FusedEqualizedLRConv1D(_FusedEqualizedLRConv):
