@@ -25,8 +25,8 @@ class _EqualizedLRConv(Conv):
                  , dilation_rate=1
                  , activation=None
                  , use_bias=True
-                 , kernel_initializer='he_normal'
-                 , bias_initializer='he_normal'
+                 , kernel_initializer=None
+                 , bias_initializer=None
                  , kernel_regularizer=None
                  , bias_regularizer=None
                  , activity_regularizer=None
@@ -61,10 +61,7 @@ class _EqualizedLRConv(Conv):
         init_std = 1.0 / self.lrmul
         self.runtime_coeff = he_std * self.lrmul
         
-        def he_init(shape, dtype=None):
-            return K.random_normal(shape, mean=0., stddev=init_std)
-        
-        self.kernel_initializer = he_init
+        self.kernel_initializer = initializers.TruncatedNormal(mean=0.0, stddev=init_std)
         super(_EqualizedLRConv, self).build(input_shape)
 
     def call(self, inputs, training=None):
@@ -110,7 +107,6 @@ class _EqualizedLRConv(Conv):
                   , 'lrmul': self.lrmul
         }
         base_config = super(_EqualizedLRConv, self).get_config()
-        #base_config.pop('rank') #?
         return dict(list(base_config.items()) + list(config.items()))
 
 class EqualizedLRConv1D(_EqualizedLRConv):
@@ -125,8 +121,8 @@ class EqualizedLRConv1D(_EqualizedLRConv):
                 , dilation_rate=1
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='he_normal'
-                , bias_initializer='he_normal'
+                , kernel_initializer=None
+                , bias_initializer=None
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -170,8 +166,8 @@ class EqualizedLRConv2D(_EqualizedLRConv):
                 , dilation_rate=(1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='he_normal'
-                , bias_initializer='he_normal'
+                , kernel_initializer=None
+                , bias_initializer=None
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -215,8 +211,8 @@ class EqualizedLRConv3D(_EqualizedLRConv):
                 , dilation_rate=(1, 1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='he_normal'
-                , bias_initializer='he_normal'
+                , kernel_initializer=None
+                , bias_initializer=None
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -261,8 +257,8 @@ class _FusedEqualizedLRConv(Conv):
                 , dilation_rate=1
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='he_normal'
-                , bias_initializer='he_normal'
+                , kernel_initializer=None
+                , bias_initializer=None
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -296,10 +292,7 @@ class _FusedEqualizedLRConv(Conv):
         init_std = 1.0 / self.lrmul
         self.runtime_coeff = he_std * self.lrmul
         
-        def he_init(shape, dtype=None):
-            return K.random_normal(shape, mean=0., stddev=init_std)
-        
-        self.kernel_initializer = he_init
+        self.kernel_initializer = initializers.TruncatedNormal(mean=0.0, stddev=init_std)
         super(_FusedEqualizedLRConv, self).build(input_shape)
         
     def call(self, inputs): #?
@@ -361,7 +354,6 @@ class _FusedEqualizedLRConv(Conv):
                   , 'lrmul': self.lrmul
         }
         base_config = super(_EqualizedLRConv, self).get_config()
-        #base_config.pop('rank') #?
         return dict(list(base_config.items()) + list(config.items()))
     
 class FusedEqualizedLRConv1D(_FusedEqualizedLRConv):
@@ -511,8 +503,8 @@ class FusedEqualizedLRConv2DTranspose(Conv2DTranspose): #?
                 , dilation_rate=(1, 1)
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='he_normal'
-                , bias_initializer='he_normal'
+                , kernel_initializer=None
+                , bias_initializer=None
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -545,10 +537,7 @@ class FusedEqualizedLRConv2DTranspose(Conv2DTranspose): #?
         init_std = 1.0 / self.lrmul
         self.runtime_coeff = he_std * self.lrmul
         
-        def he_init(shape, dtype=None):
-            return K.random_normal(shape, mean=0., stddev=init_std)
-        
-        self.kernel_initializer = he_init
+        self.kernel_initializer = initializers.TruncatedNormal(mean=0.0, stddev=init_std)
         super(FusedEqualizedLRConv2DTranspose, self).build(input_shape)
 
     def call(self, inputs):
@@ -615,6 +604,7 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
     
     def __init__(self
                 , blur_kernel=[1, 2, 1]
+                , kernel_size=(3, 3)
                 , strides=(1, 1)
                 , padding='valid'
                 , depth_multiplier=1
@@ -631,7 +621,7 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
                 , bias_constraint=None
                 , **kwargs):
         self.blur_kernel = blur_kernel      
-        super(BlurDepthwiseConv2D, self).__init__(kernel_size=(3, 3)
+        super(BlurDepthwiseConv2D, self).__init__(kernel_size=kernel_size
                 , strides=strides
                 , padding=padding
                 , depth_multiplier=depth_multiplier

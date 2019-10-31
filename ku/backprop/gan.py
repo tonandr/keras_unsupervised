@@ -81,6 +81,7 @@ class AbstractGAN(ABC):
                 if not hasattr(self, 'custom_objects'):
                     RuntimeError('Before models, custom_objects must be created.')
                 
+                self.custom_objects['ModelExt'] = ModelExt
                 self.custom_objects['SoftPlusNonSatLoss'] = SoftPlusNonSatLoss
                                                             
                 with CustomObjectScope(self.custom_objects): 

@@ -5,6 +5,7 @@ from . import callbacks_ext
 from . import ebm
 from . import layer_ext
 from . import loss_ext
+from . import metrics_ext
 from . import optimizer_ext
 from .utility import reverse_undirected_model
 from .utility import save_model_jh5

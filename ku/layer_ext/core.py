@@ -9,7 +9,7 @@ from tensorflow.python.keras.layers.merge import _Merge
 from tensorflow.python.keras.layers import Layer, InputSpec, Dense
 import tensorflow.keras.initializers as initializers
 
-from ku.backend_ext import tensorflow_backend as Ke
+from ..backend_ext import tensorflow_backend as Ke
 
 class EqualizedLRDense(Dense):
     """Equalized learning rate dense layer."""
@@ -18,8 +18,8 @@ class EqualizedLRDense(Dense):
                 , units
                 , activation=None
                 , use_bias=True
-                , kernel_initializer='he_normal'
-                , bias_initializer='he_normal'
+                , kernel_initializer=None
+                , bias_initializer=None
                 , kernel_regularizer=None
                 , bias_regularizer=None
                 , activity_regularizer=None
@@ -47,11 +47,8 @@ class EqualizedLRDense(Dense):
         he_std = self.gain / np.sqrt(np.prod(input_shape[1:], axis=-1)) #?
         init_std = 1.0 / self.lrmul
         self.runtime_coeff = he_std * self.lrmul
-        
-        def he_init(shape, dtype=None):
-            return K.random_normal(shape, mean=0., stddev=init_std)
-        
-        self.kernel_initializer = he_init
+                
+        self.kernel_initializer = initializers.TruncatedNormal(mean=0.0, stddev=init_std)
         super(EqualizedLRDense, self).build(input_shape)
 
     def call(self, inputs):                    

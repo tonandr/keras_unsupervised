@@ -13,7 +13,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='keras-unsupervised',  # Required
-    version='1.0.3.dev1',  # Required
+    version='1.0.9.dev',  # Required
     description='Keras based unsupervised learning framework.',  # Optional
     long_description=long_description,  # Optional
     long_description_content_type='text/markdown',  # Optional (see note above)
@@ -77,10 +77,10 @@ setup(
     #
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['tensorflow-probability>=0.8.0'
-                      , 'pandas>=0.25.1'
-                      , 'scikit-image>=0.15.0'
-                      , 'opencv-contrib-python>=4.1.1.26'],  # Optional
+    install_requires=['tensorflow-probability==0.8.0'
+                      , 'pandas==0.25.1'
+                      , 'scikit-image==0.15.0'
+                      , 'opencv-contrib-python==4.1.1.26'],  # Optional
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"

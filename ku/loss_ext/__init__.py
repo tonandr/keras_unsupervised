@@ -1,3 +1,4 @@
+from .loss import categorical_corssentropy_with_label_gt
 from .loss import gen_disc_regular_loss1
 from .loss import gen_disc_regular_loss2
 from .loss import gen_disc_wgan_loss
@@ -9,6 +10,8 @@ from .loss import softplus_non_sat_loss
 from .loss import softplus_loss
 from .loss import r_penalty_loss
 from .loss import softplus_non_sat_r_penalty_loss
+
+from .loss import CategoricalCrossentropyWithLabelGT
 from .loss import GenDiscRegularLoss1
 from .loss import GenDiscRegularLoss2
 from .loss import GenDiscWGANLoss

@@ -32,20 +32,15 @@ from tensorflow.python.keras.engine.input_layer import InputLayer
 
 from .yolov3_detect import make_yolov3_model, BoundBox, WeightReader, draw_boxes_v3
 
-def YOLOV3Base(self):
-    """Get yolov3 as a base model.
+def YOLOV3(self):
+    """Get yolov3.
     
     Returns
     -------
     Model of Keras
         Partial yolo3 model from the input layer to the add_23 layer
     """
-    
-    if self.conf['yolov3_base_model_load']:
-        base = load_model('yolov3_base.h5')
-        base.trainable = True
-        return base
-    
+        
     yolov3 = make_yolov3_model()
 
     # Load the weights.

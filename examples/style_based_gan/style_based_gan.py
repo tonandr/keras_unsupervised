@@ -576,7 +576,7 @@ class StyleGAN(AbstractGAN):
                    , padding='same')(x)
             x = LeakyReLU(0.2)(x)
             
-            #x = BlurDepthwiseConv2D(padding='same')(x) #?
+            x = BlurDepthwiseConv2D(padding='same')(x) #?
             if np.min(K.int_shape(x)[2:]) * 2 >= 128: #?  
                 x = FusedEqualizedLRConv2D(self._cal_num_chs(res - 2)
                                 , 3
@@ -907,7 +907,6 @@ class StyleGAN(AbstractGAN):
             callbacks_gen_disc._call_begin_hook(ModeKeys.TRAIN)
             
             initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(initial_epoch, ModeKeys.TRAIN) #?                                  
-            num_samples = self.hps['mini_batch_size']
             
             for e_i in range(initial_epoch, self.hps['epochs']):
                 if callbacks_disc_ext.model.stop_training or callbacks_gen_disc.model.stop_training:
@@ -926,6 +925,7 @@ class StyleGAN(AbstractGAN):
                 callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
                 callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
 
+                num_samples = None
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
                         # Build batch logs.
@@ -943,6 +943,8 @@ class StyleGAN(AbstractGAN):
                         else:
                             x_inputs1 = next(output_generator)
                             x_inputs_b = [x_inputs1['inputs1']]
+                        
+                        num_samples = x_inputs_b[0].shape[0]
                         
                         x_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
                         
@@ -1015,7 +1017,7 @@ class StyleGAN(AbstractGAN):
                         print('\n', k_batch_logs)
                         
                     # Build batch logs.
-                    batch_logs = {'batch': s_i + 1, 'size': self.hps['mini_batch_size']}
+                    batch_logs = {'batch': s_i + 1, 'size': num_samples}
                     callbacks_gen_disc._call_batch_hook(ModeKeys.TRAIN
                                                         , 'begin'
                                                         , s_i

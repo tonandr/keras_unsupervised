@@ -1,3 +1,17 @@
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -7,12 +21,27 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Input
 from tensorflow.python.keras.losses import LossFunctionWrapper
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.framework import ops, smart_cond
+from tensorflow.python.ops import math_ops, array_ops
 import tensorflow.keras.backend as K
 from tensorflow.python.keras.utils import losses_utils
 
 EPSILON = 1e-8
+
+class CategoricalCrossentropyWithLabelGT(LossFunctionWrapper):
+    def __init__(self
+                 , num_classes=2
+                 , from_logits=False
+                 , label_smoothing=0
+                 , reduction=losses_utils.ReductionV2.AUTO
+                 , name='categorical_corssentropy_with_label_gt'):
+        super(CategoricalCrossentropyWithLabelGT, self).__init__(
+            categorical_corssentropy_with_label_gt
+            , name=name
+            , reduction=reduction
+            , num_classes=num_classes
+            , from_logits=from_logits
+            , label_smoothing=label_smoothing) 
 
 class GenDiscRegularLoss1(LossFunctionWrapper):
     def __init__(self
@@ -114,6 +143,20 @@ class SoftPlusNonSatRPenaltyLoss(LossFunctionWrapper):
             , reduction=reduction
             , input_variables=input_variables
             , r_gamma = r_gamma)
+
+def categorical_corssentropy_with_label_gt(y_true, y_pred, num_classes=2, from_logits=False, label_smoothing=0):
+    y_true = K.one_hot(math_ops.cast(y_true, 'int32'), num_classes)
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
+    
+    def _smooth_labels():
+        num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
+        return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
+    
+    y_true = smart_cond.smart_cond(label_smoothing,
+                                   _smooth_labels, lambda: y_true)
+    return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 def gen_disc_regular_loss1(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
