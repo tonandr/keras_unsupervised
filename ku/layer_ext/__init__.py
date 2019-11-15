@@ -1,7 +1,8 @@
 from ku.layer_ext.normalization import AdaptiveIN
 from ku.layer_ext.normalization import AdaptiveINWithStyle
-from .style import StyleMixingRegularization, TruncationTrick
+from .style import StyleMixingRegularization
 from .style import TruncationTrick
+from .style import MinibatchStddevConcat
 from .input import InputVariable
 from .input import InputRandomUniform
 from .core import EqualizedLRDense

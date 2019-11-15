@@ -43,20 +43,6 @@ class CategoricalCrossentropyWithLabelGT(LossFunctionWrapper):
             , from_logits=from_logits
             , label_smoothing=label_smoothing) 
 
-class GenDiscRegularLoss1(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gen_disc_regular_loss1'):
-        super(GenDiscRegularLoss1, self).__init__(
-            gen_disc_regular_loss1, name=name, reduction=reduction)
-
-class GenDiscRegularLoss2(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gen_disc_regular_loss2'):
-        super(GenDiscRegularLoss2, self).__init__(
-            gen_disc_regular_loss2, name=name, reduction=reduction)
-
 class DiscExtRegularLoss1(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
@@ -71,12 +57,19 @@ class DiscExtRegularLoss2(LossFunctionWrapper):
         super(DiscExtRegularLoss2, self).__init__(
             disc_ext_regular_loss2, name=name, reduction=reduction)
 
-class GenDiscWGANLoss(LossFunctionWrapper):
+class GenDiscRegularLoss1(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gen_disc_wgan_loss'):
-        super(GenDiscWGANLoss, self).__init__(
-            gen_disc_wgan_loss, name=name, reduction=reduction)
+                 , name='gen_disc_regular_loss1'):
+        super(GenDiscRegularLoss1, self).__init__(
+            gen_disc_regular_loss1, name=name, reduction=reduction)
+
+class GenDiscRegularLoss2(LossFunctionWrapper):
+    def __init__(self
+                 , reduction=losses_utils.ReductionV2.AUTO
+                 , name='gen_disc_regular_loss2'):
+        super(GenDiscRegularLoss2, self).__init__(
+            gen_disc_regular_loss2, name=name, reduction=reduction)
 
 class DiscExtWGANLoss(LossFunctionWrapper):
     def __init__(self
@@ -99,6 +92,13 @@ class DiscExtWGANGPLoss(LossFunctionWrapper):
             , input_variables=input_variables
             , wgan_lambda = wgan_lambda
             , wgan_target = wgan_target)
+
+class GenDiscWGANLoss(LossFunctionWrapper):
+    def __init__(self
+                 , reduction=losses_utils.ReductionV2.AUTO
+                 , name='gen_disc_wgan_loss'):
+        super(GenDiscWGANLoss, self).__init__(
+            gen_disc_wgan_loss, name=name, reduction=reduction)
 
 class SoftPlusNonSatLoss(LossFunctionWrapper):
     def __init__(self
@@ -158,16 +158,6 @@ def categorical_corssentropy_with_label_gt(y_true, y_pred, num_classes=2, from_l
                                    _smooth_labels, lambda: y_true)
     return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
-def gen_disc_regular_loss1(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(K.log(1.0 - y_pred + EPSILON), axis=-1)# Axis?
-
-def gen_disc_regular_loss2(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(K.log(y_pred + EPSILON), axis=-1)
-
 def disc_ext_regular_loss1(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
@@ -178,10 +168,15 @@ def disc_ext_regular_loss2(y_true, y_pred):
     y_true = math_ops.cast(y_true, y_pred.dtype)
     return K.mean(K.log(1.0 - y_pred + EPSILON), axis=-1)
 
-def gen_disc_wgan_loss(y_true, y_pred):
+def gen_disc_regular_loss1(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(y_pred, axis=-1)
+    return K.mean(K.log(1.0 - y_pred + EPSILON), axis=-1)# Axis?
+
+def gen_disc_regular_loss2(y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return K.mean(K.log(y_pred + EPSILON), axis=-1)
 
 def disc_ext_wgan_loss(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
@@ -203,6 +198,11 @@ def disc_ext_wgan_gp_loss(y_true
     grads = tape.gradient(y_pred, input_variables)
     norm = K.sqrt(K.sum(K.square(grads), axis=[1, 2, 3])) #?
     return (wgan_lambda / (wgan_target ** 2)) * K.square(norm - wgan_target) #?
+
+def gen_disc_wgan_loss(y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return K.mean(y_pred, axis=-1)
 
 def softplus_non_sat_loss(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)

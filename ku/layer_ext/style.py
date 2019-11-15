@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
+import tensorflow as tf
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.layers.merge import _Merge
 from tensorflow.python.keras.layers import Layer, InputSpec
@@ -116,9 +117,55 @@ class TruncationTrick(Layer): #?
             , 'cutoff': self.cutoff
             , 'momentum': self.momentum
             , 'moving_mean_initializer':
-                initializers.serialize(self.moving_mean_initializer),
+                initializers.serialize(self.moving_mean_initializer)
         }
         base_config = super(TruncationTrick, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+class MinibatchStddevConcat(Layer): #?
+    """Minibatch standard deviation map concatenation layer."""
+
+    def __init__(self
+                 , group_size=4
+                 , num_new_features=1
+                 , **kwargs):
+        super(MinibatchStddevConcat, self).__init__(**kwargs)
+        self.group_size= group_size
+        self.num_new_features = num_new_features
+
+    def build(self, input_shape):
+        super(MinibatchStddevConcat, self).build(input_shape)
+
+    def call(self, x):
+        group_size = tf.minimum(self.group_size, tf.shape(x)[0])     # Minibatch must be divisible by (or smaller than) group_size.
+        s = x.shape                                             # [NHWC]  Input shape.
+        y = tf.reshape(x
+                       , [group_size
+                          , -1
+                          , s[1]
+                          , s[2]
+                          , s[3] // self.num_new_features
+                          , self.num_new_features])
+                          # [GMHWcn] Split minibatch into M groups of size G. Split channels into n channel groups c.
+        y = tf.cast(y, tf.float32)                              # [GMHWcn] Cast to FP32.
+        y -= tf.reduce_mean(y, axis=0, keepdims=True)           # [GMHWcn] Subtract mean over group.
+        y = tf.reduce_mean(tf.square(y), axis=0)                # [MHWcn]  Calc variance over group.
+        y = tf.sqrt(y + 1e-8)                                   # [MHWcn]  Calc stddev over group.
+        y = tf.reduce_mean(y, axis=[1,2,3], keepdims=True)      # [M111n]  Take average over fmaps and pixels.
+        y = tf.reduce_mean(y, axis=[3])                         # [M11n] Split channels into c channel groups
+        y = tf.cast(y, x.dtype)                                 # [M11n]  Cast back to original data type.
+        y = tf.tile(y, [group_size, s[1], s[2], 1])             # [NHWn]  Replicate over group and pixels.
+        
+        return tf.concat([x, y], axis=3)                        # [NHWC]  Append as new fmap.
+
+    def get_config(self):
+        config = {'group_size': self.group_size
+            , 'num_new_features': self.num_new_features
+        }
+        base_config = super(MinibatchStddevConcat, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
     def compute_output_shape(self, input_shape):

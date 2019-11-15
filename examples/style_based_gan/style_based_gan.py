@@ -26,13 +26,14 @@ import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda, Embedding, Flatten, Multiply, Dropout
-from tensorflow.keras.layers import LeakyReLU, Activation, AveragePooling2D, UpSampling2D
+from tensorflow.keras.layers import LeakyReLU, Activation, AveragePooling2D, UpSampling2D, Concatenate
 import tensorflow.keras.backend as K 
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
 from tensorflow.keras.utils import plot_model
 from tensorflow.python.keras.utils.generic_utils import to_list, CustomObjectScope
 from tensorflow.python.keras import callbacks as cbks, initializers
+from tensorflow.keras.callbacks import TensorBoard
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -53,7 +54,7 @@ from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegula
 from ku.layer_ext import EqualizedLRDense, EqualizedLRConv2D
 from ku.layer_ext.convolution import FusedEqualizedLRConv2DTranspose, BlurDepthwiseConv2D,\
     FusedEqualizedLRConv2D
-from ku.callbacks_ext import TensorBoardExt
+from ku.layer_ext.style import MinibatchStddevConcat
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -350,6 +351,8 @@ class StyleGAN(AbstractGAN):
             self.custom_objects['FusedEqualizedLRConv2DTranspose'] = FusedEqualizedLRConv2DTranspose # Loss?
             self.custom_objects['BlurDepthwiseConv2D'] = BlurDepthwiseConv2D # Loss?
             self.custom_objects['FusedEqualizedLRConv2D'] = FusedEqualizedLRConv2D # Loss?
+            self.custom_objects['MinibatchStddevConcat'] = MinibatchStddevConcat # Loss?
+            
             
         else:    
             self.custom_objects = {'AdaptiveINWithStyle': AdaptiveINWithStyle
@@ -360,7 +363,8 @@ class StyleGAN(AbstractGAN):
                                , 'EqualizedLRConv2D': EqualizedLRConv2D
                                , 'FusedEqualizedLRConv2DTranspose': FusedEqualizedLRConv2DTranspose
                                , 'BlurDepthwiseConv2D': BlurDepthwiseConv2D
-                               , 'FusedEqualizedLRConv2D': FusedEqualizedLRConv2D} # Loss?
+                               , 'FusedEqualizedLRConv2D': FusedEqualizedLRConv2D
+                               , "MinibatchStddevConcat": MinibatchStddevConcat} # Loss?
       
         super(StyleGAN, self).__init__(conf) #?
                 
@@ -461,7 +465,7 @@ class StyleGAN(AbstractGAN):
         output1 = EqualizedLRConv2D(3
                         , 1
                         , strides=1
-                        , activation='tanh'
+                        , activation='linear' #'tanh'
                         , padding='same')(x)
 
         if self.nn_arch['label_usage']:
@@ -528,10 +532,10 @@ class StyleGAN(AbstractGAN):
             # Label multiplication.
             l = Flatten()(Embedding(self.map_nn_arch['num_classes']
                               , self.map_nn_arch['latent_dim'])(labels)) #?
+            x = Concatenate(-1)([x, l])
         
-            # L2 normalization.
-            x = Multiply()([x, l])
-            x = Lambda(lambda x: K.l2_normalize(x, axis=-1))(x)
+            # Pixel normalization
+            x = Lambda(lambda x: x / tf.sqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + 1e-8))(x)
         
         # Mapping layers.
         for layer_idx in range(self.map_nn_arch['num_layers'] - 1):
@@ -591,6 +595,7 @@ class StyleGAN(AbstractGAN):
         
         # Layer for 4*4 size.
         res = 2
+        x = MinibatchStddevConcat()(x)
         x = EqualizedLRConv2D(self._cal_num_chs(res - 1) #?
                    , 3
                    , padding='same')(x) #?
@@ -753,7 +758,7 @@ class StyleGAN(AbstractGAN):
                     output_generator = generator
                  
             # Callbacks.            
-            # disc ext.
+            # disc_ext.
             if self.conf['multi_gpu']:
                 #out_labels_disc_ext =  self.disc_ext_p.metrics_names if hasattr(self.disc_ext_p, 'metrics_names') else []
                 out_labels_disc_ext = ['loss'] + [v.name for v in self.disc_ext_p.loss_functions] #?
@@ -766,29 +771,24 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                 
                 # Tensorboard callback.
-                """
-                callback_tb = TensorBoardExt(log_dir='.\\logs'
-                                               , histogram_freq=0
+                callback_tb = TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
                                                , write_grads=True
                                                , write_images=True
                                                , update_freq='batch')
                 _callbacks.append(callback_tb)
-                """
                 
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext_p.history]
-                callbacks_disc_ext = cbks.CallbackList(_callbacks)
-                
-                callbacks_disc_ext.set_model(self.disc_ext_p._get_callback_model()) #?
-                callbacks_disc_ext.set_params({'epochs': self.hps['epochs']
-                                               , 'steps_per_epoch': self.hps['batch_step'] * self.hps['disc_k_step']
-                                               , 'steps': self.hps['batch_step'] * self.hps['disc_k_step']
-                                               , 'batch_size': self.hps['mini_batch_size']
-                                               , 'samples': self.hps['batch_step'] * self.hps['disc_k_step'] #?
-                                               , 'verbose': verbose
-                                               , 'do_validation': do_validation
-                                               , 'metrics': callback_metrics_disc_ext})
+                callbacks_disc_ext = cbks.configure_callbacks(_callbacks
+                                                              , self.disc_ext_p
+                                                              , do_validation=do_validation
+                                                              , epochs=self.hps['epochs']
+                                                              , steps_per_epoch=self.hps['batch_step'] * self.hps['disc_k_step']
+                                                              , samples=self.hps['batch_step'] * self.hps['disc_k_step']
+                                                              , verbose=0
+                                                              , mode=ModeKeys.TRAIN)
             else:
                 #out_labels_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
                 out_labels_disc_ext = ['loss'] + [v.name for v in self.disc_ext.loss_functions]
@@ -801,30 +801,24 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                     
                 # Tensorboard callback.
-                """
-                callback_tb = TensorBoardExt(log_dir='.\\logs'
-                                               , histogram_freq=0
+                callback_tb = TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
                                                , write_grads=True
                                                , write_images=True
                                                , update_freq='batch')
                 _callbacks.append(callback_tb)
-                """
                                 
                 _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
-                callbacks_disc_ext = cbks.CallbackList(_callbacks)
-                
-                callbacks_disc_ext.set_model(self.disc_ext._get_callback_model()) #?
-                callbacks_disc_ext.set_params({'epochs': self.hps['epochs']
-                                               , 'steps_per_epoch': self.hps['batch_step'] * self.hps['disc_k_step']
-                                               , 'steps': self.hps['batch_step'] * self.hps['disc_k_step']
-                                               , 'batch_size': self.hps['mini_batch_size']
-                                               , 'samples': self.hps['batch_step'] * self.hps['disc_k_step'] #?
-                                               , 'verbose': verbose
-                                               , 'do_validation': do_validation
-                                               , 'metrics': callback_metrics_disc_ext})
-            
+                callbacks_disc_ext = cbks.configure_callbacks(_callbacks
+                                                              , self.disc_ext
+                                                              , do_validation=do_validation
+                                                              , epochs=self.hps['epochs']
+                                                              , steps_per_epoch=self.hps['batch_step'] * self.hps['disc_k_step']
+                                                              , samples=self.hps['batch_step'] * self.hps['disc_k_step']
+                                                              , verbose=1
+                                                              , mode=ModeKeys.TRAIN)            
             # gen_disc.
             if self.conf['multi_gpu']:
                 #out_labels_gen_disc = self.gen_disc_p.metrics_names if hasattr(self.gen_disc_p, 'metrics_names') else []
@@ -838,29 +832,24 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                 
                 # Tensorboard callback.
-                """
-                callback_tb = TensorBoardExt(log_dir='.\\logs'
-                                               , histogram_freq=0
+                callback_tb = TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
                                                , write_grads=True
                                                , write_images=True
                                                , update_freq='batch')
                 _callbacks.append(callback_tb)
-                """
 
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc_p.history]
-                callbacks_gen_disc = cbks.CallbackList(_callbacks)
-                
-                callbacks_gen_disc.set_model(self.gen_disc_p._get_callback_model())
-                callbacks_gen_disc.set_params({'epochs': self.hps['epochs']
-                                               , 'steps_per_epoch': self.hps['batch_step']
-                                               , 'steps': self.hps['batch_step']
-                                               , 'batch_size': self.hps['mini_batch_size']
-                                               , 'samples': self.hps['batch_step'] #?
-                                               , 'verbose': verbose
-                                               , 'do_validation': do_validation
-                                               , 'metrics': callback_metrics_gen_disc})
+                callbacks_gen_disc = cbks.configure_callbacks(_callbacks
+                                                              , self.gen_disc_p
+                                                              , do_validation=do_validation
+                                                              , epochs=self.hps['epochs']
+                                                              , steps_per_epoch=self.hps['batch_step']
+                                                              , samples=self.hps['batch_step']
+                                                              , verbose=0
+                                                              , mode=ModeKeys.TRAIN)  
             else:
                 #out_labels_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
                 out_labels_gen_disc = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
@@ -873,29 +862,24 @@ class StyleGAN(AbstractGAN):
                                                          , stateful_metrics=[]))
                 
                 # Tensorboard callback.
-                """
-                callback_tb = TensorBoardExt(log_dir='.\\logs'
-                                               , histogram_freq=0
+                callback_tb = TensorBoard(log_dir='.\\logs'
+                                               , histogram_freq=1
                                                , batch_size=self.hps['mini_batch_size']
                                                , write_graph=True
                                                , write_grads=True
                                                , write_images=True
                                                , update_freq='batch')
                 _callbacks.append(callback_tb)
-                """
                 
                 _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
-                callbacks_gen_disc = cbks.CallbackList(_callbacks)
-                
-                callbacks_gen_disc.set_model(self.gen_disc._get_callback_model())
-                callbacks_gen_disc.set_params({'epochs': self.hps['epochs']
-                                               , 'steps_per_epoch': self.hps['batch_step']
-                                               , 'steps': self.hps['batch_step']
-                                               , 'batch_size': self.hps['mini_batch_size']
-                                               , 'samples': self.hps['batch_step'] #?
-                                               , 'verbose': verbose
-                                               , 'do_validation': do_validation
-                                               , 'metrics': callback_metrics_gen_disc})
+                callbacks_gen_disc = cbks.configure_callbacks(_callbacks
+                                                              , self.gen_disc
+                                                              , do_validation=do_validation
+                                                              , epochs=self.hps['epochs']
+                                                              , steps_per_epoch=self.hps['batch_step']
+                                                              , samples=self.hps['batch_step']
+                                                              , verbose=1
+                                                              , mode=ModeKeys.TRAIN) 
             
             aggr_metrics_disc_ext = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
             aggr_metrics_gen_disc = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
@@ -955,7 +939,7 @@ class StyleGAN(AbstractGAN):
                         else:
                             z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
                             
-                        z_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
+                        z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
                                      
                         # Train disc.
                         # Create normal random inputs.
@@ -987,7 +971,7 @@ class StyleGAN(AbstractGAN):
                             outs = self.disc_ext.train_on_batch(x_inputs_b + z_inputs_b + internal_inputs
                                      , x_outputs_b + x_outputs_b + z_outputs_b
                                      , class_weight=class_weight
-                                     , reset_metrics=False) #?  
+                                     , reset_metrics=True) #?  
 
                         del x_inputs_b, z_inputs_b, internal_inputs, x_outputs_b, z_outputs_b
                         #print(s_i, self.map.get_weights()[0])
@@ -997,19 +981,13 @@ class StyleGAN(AbstractGAN):
                             aggr_metrics_disc_ext.create(outs)
                         
                         if self.conf['multi_gpu']:
-                            metrics_names = ['loss'] + [v.name for v in self.disc_ext_p.loss_functions] 
+                            metrics_names = ['disc_ext_loss'] + [v.name for v in self.disc_ext_p.loss_functions] 
                         else:
-                            metrics_names = ['loss'] + [v.name for v in self.disc_ext.loss_functions]                             
+                            metrics_names = ['disc_ext_loss'] + [v.name for v in self.disc_ext.loss_functions]                             
                             
                         for l, o in zip(metrics_names, outs):
                             k_batch_logs[l] = o                        
-            
-                        ws = self.gen.get_weights()
-                        res = []
-                        for w in ws:
-                            res.append(np.isfinite(w).all())
-                        res = np.asarray(res)
-                        
+                                    
                         callbacks_disc_ext._call_batch_hook(ModeKeys.TRAIN
                                                             , 'end'
                                                             , self.hps['disc_k_step'] * s_i + k_i + 1
@@ -1071,9 +1049,9 @@ class StyleGAN(AbstractGAN):
                         aggr_metrics_gen_disc.create(outs)
                     
                     if self.conf['multi_gpu']:
-                        metrics_names = ['loss'] + [v.name for v in self.gen_disc_p.loss_functions] 
+                        metrics_names = ['gen_disc_loss'] + [v.name for v in self.gen_disc_p.loss_functions] 
                     else:
-                        metrics_names = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
+                        metrics_names = ['gen_disc_loss'] + [v.name for v in self.gen_disc.loss_functions]
                     
                     for l, o in zip(metrics_names, outs): #?
                         batch_logs[l] = o
@@ -1097,34 +1075,17 @@ class StyleGAN(AbstractGAN):
                     epochs_log_gen_disc[out_label] = out
                     
                 # Do validation.
-                if do_validation: #?
-                    pass
-                    """
+                if not do_validation: #?
                     if e_i % validation_freq == 0: #?
                         # disc_ext.
-                        if self.conf['multi_gpu']:
-                            val_outs_disc_ext = self.disc_ext_p.evaluate_generator(val_generator
-                                                                          , validation_steps #?
-                                                                          , callbacks=callbacks_disc_ext
-                                                                          , workers=0)
-                        else:
-                            val_outs_disc_ext = self.disc_ext.evaluate_generator(val_generator
-                                                                          , validation_steps #?
-                                                                          , callbacks=callbacks_disc_ext
-                                                                          , workers=0) 
+                        val_outs_disc_ext = self.evaluate_disc_ext(val_generator
+                                                                      , callbacks=callbacks_disc_ext
+                                                                      , workers=0)
                         
                         # gen_disc.
-                        if self.conf['multi_gpu']:
-                            val_outs_gen_disc = self.gen_disc_p.evaluate_generator(val_generator
-                                                                          , validation_steps #?
-                                                                          , callbacks=callbacks_gen_disc
-                                                                          , workers=0)
-                        else:
-                            val_outs_gen_disc = self.gen_disc.evaluate_generator(val_generator
-                                                                          , validation_steps #?
-                                                                          , callbacks=callbacks_gen_disc
-                                                                          , workers=0)
-                                            
+                        val_outs_gen_disc = self.evaluate_gen_disc(val_generator
+                                                                      , callbacks=callbacks_gen_disc
+                                                                      , workers=0)                                            
                         # Make epochs log.
                         val_outs_disc_ext = to_list(val_outs_disc_ext)
                         for out_label, val_out in zip(out_labels_disc_ext, val_outs_disc_ext):
@@ -1133,8 +1094,7 @@ class StyleGAN(AbstractGAN):
                         val_outs_gen_disc = to_list(val_outs_gen_disc)
                         for out_label, val_out in zip(out_labels_gen_disc, val_outs_gen_disc):
                             epochs_log_gen_disc['val_' + out_label] = val_out
-                    """
-                                    
+                                                                
                 callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
                 callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
                 
@@ -1144,11 +1104,11 @@ class StyleGAN(AbstractGAN):
                     self.gen_disc.save(self.GEN_DISC_PATH)
                 
                 # Save sample images. 
-                res = self.generate(np.random.rand(1, self.map_nn_arch['latent_dim'])
-                                    , np.random.randint(self.map_nn_arch['num_classes'], size=1))
+                res = self.generate(np.random.rand(1, self.map_nn_arch['latent_dim']), np.asarray([1024]))
+                                    #, np.random.randint(self.map_nn_arch['num_classes'], size=1))
                 sample = res[0]
-                sample = np.squeeze(sample) * 255.
-                sample = sample.astype('uint8')
+                sample = np.squeeze(sample) #* 255.
+                #sample = sample.astype('uint8')
                 imsave(os.path.join('results', 'sample_' + str(e_i) + '.png'), sample, check_contrast=False)
             
             if self.conf['multi_gpu']:
@@ -1172,6 +1132,306 @@ class StyleGAN(AbstractGAN):
             return self.disc_ext_p.history, self.gen_disc_p.history
         else:
             return self.disc_ext.history, self.gen_disc.history
+
+    def evaluate_disc_ext(self
+                      , generator
+                      , verbose=1
+                      , callbacks=None
+                      , max_queue_size=10
+                      , workers=1
+                      , use_multiprocessing=False):
+        """Evaluate the extended discriminator.
+        
+        Parameters
+        ----------
+        generator: Generator
+            Test data generator.
+        verbose: Integer 
+            Verbose mode (default=1).
+        callback: list
+            Callbacks (default=None).
+        max_queue_size: Integer
+            Maximum size for the generator queue (default: 10).
+        class_weight: TODO. 
+            TODO.
+        workers: Integer
+            Maximum number of processes to get samples (default: 1, 0: main thread).
+        use_multiprocessing: Boolean
+            Multi-processing flag (default: False).
+.        
+        Returns
+        -------
+        Training history.
+            tuple.
+        """
+
+        # Check exception.                    
+        if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
+            warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
+        
+        out_labels = ['loss'] + [v.name for v in self.disc_ext.loss_functions] #?                                                   
+        aggr_metrics = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
+        
+        # Evaluate.
+        callbacks._call_begin_hook(ModeKeys.TEST)
+                                
+        if self.conf['multi_gpu']:
+            self.disc_ext_p.reset_metrics()
+        else:
+            self.disc_ext.reset_metrics()
+            
+        epochs_log= {}
+                                           
+        callbacks.on_epoch_begin(0, epochs_log)
+
+        num_samples = None
+        for k_i in range(self.hps['batch_step']):
+            # Build batch logs.
+            k_batch_logs = {'batch': self.hps['batch_step'] * k_i + 1, 'size': self.hps['mini_batch_size']}
+            callbacks._call_batch_hook(ModeKeys.TEST
+                                                , 'begin'
+                                                , self.hps['batch_step'] * k_i + 1
+                                                , k_batch_logs)
+            
+            # Create x, x_tilda.
+            # x.
+            if self.nn_arch['label_usage']:
+                x_inputs1, x_inputs2 = next(generator)
+                x_inputs_b = [x_inputs1['inputs1'], x_inputs2['inputs2']]  
+            else:
+                x_inputs1 = next(generator)
+                x_inputs_b = [x_inputs1['inputs1']]
+            
+            num_samples = x_inputs_b[0].shape[0]
+            
+            x_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
+            
+            # x_tilda.
+            if self.nn_arch['label_usage']:
+                z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
+                    + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
+            else:
+                z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
+                
+            z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
+                         
+            # Train disc.
+            # Create normal random inputs.
+            internal_inputs = []
+            
+            if self.nn_arch['label_usage']:                                                        
+                for inp in self.disc_ext.inputs[4:]:
+                    if K.ndim(inp) == 4:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:]))))
+                    else:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:]))))
+            else:                                                        
+                for inp in self.disc_ext.inputs[2:]:
+                    if K.ndim(inp) == 4:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:]))))
+                    else:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:])))) # Trivial.                            
+            
+            if self.conf['multi_gpu']:
+                outs = self.disc_ext_p.test_on_batch(x_inputs_b + z_inputs_b + internal_inputs
+                         , x_outputs_b + x_outputs_b + z_outputs_b
+                         , reset_metrics=False) #?                    
+            else:
+                outs = self.disc_ext.test_on_batch(x_inputs_b + z_inputs_b + internal_inputs
+                         , x_outputs_b + x_outputs_b + z_outputs_b
+                         , reset_metrics=False) #?  
+
+            del x_inputs_b, z_inputs_b, internal_inputs, x_outputs_b, z_outputs_b
+            #print(s_i, self.map.get_weights()[0])
+            outs = to_list(outs) #?
+            
+            if k_i == 0:
+                aggr_metrics.create(outs)
+            
+            if self.conf['multi_gpu']:
+                metrics_names = ['loss'] + [v.name for v in self.disc_ext_p.loss_functions] 
+            else:
+                metrics_names = ['loss'] + [v.name for v in self.disc_ext.loss_functions]                             
+                
+            for l, o in zip(metrics_names, outs):
+                k_batch_logs[l] = o                        
+
+            ws = self.gen.get_weights()
+            res = []
+            for w in ws:
+                res.append(np.isfinite(w).all())
+            res = np.asarray(res)
+            
+            callbacks._call_batch_hook(ModeKeys.TEST
+                                                , 'end'
+                                                , self.hps['batch_step'] * k_i + 1
+                                                , k_batch_logs)
+            print('\n', k_batch_logs)
+                            
+        aggr_metrics.finalize()
+        
+        # Make epochs log.
+        outs = to_list(aggr_metrics.results)
+        for out_label, out in zip(out_labels, outs):
+            epochs_log[out_label] = out
+                                                                      
+        callbacks.on_epoch_end(0, epochs_log)
+                    
+        if self.conf['multi_gpu']:
+            self.disc_ext_p._successful_loop_finish = True #?
+        else:
+            self.disc_ext._successful_loop_finish = True
+            
+        callbacks._call_end_hook(ModeKeys.TEST)
+
+        if self.conf['multi_gpu']:
+            return self.disc_ext_p.history
+        else:
+            return self.disc_ext.history
+    
+    def evaluate_gen_disc(self
+                      , generator
+                      , verbose=1
+                      , callbacks=None
+                      , max_queue_size=10
+                      , workers=1
+                      , use_multiprocessing=False):
+        """Evaluate the generator via discriminator. #?
+        
+        Parameters
+        ----------
+        generator: Generator
+            Test data generator.
+        verbose: Integer 
+            Verbose mode (default=1).
+        callback: list
+            Callbacks (default=None).
+        max_queue_size: Integer
+            Maximum size for the generator queue (default: 10).
+        class_weight: TODO. 
+            TODO.
+        workers: Integer
+            Maximum number of processes to get samples (default: 1, 0: main thread).
+        use_multiprocessing: Boolean
+            Multi-processing flag (default: False).
+.        
+        Returns
+        -------
+        Training history.
+            tuple.
+        """
+
+        # Check exception.                    
+        if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
+            warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
+        
+        out_labels = ['loss'] + [v.name for v in self.gen_disc.loss_functions] #?                                                   
+        aggr_metrics = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
+        
+        # Evaluate.
+        callbacks._call_begin_hook(ModeKeys.TEST)
+                                
+        if self.conf['multi_gpu']:
+            self.gen_disc_p.reset_metrics()
+        else:
+            self.gen_disc.reset_metrics()
+            
+        epochs_log= {}
+                                           
+        callbacks.on_epoch_begin(0, epochs_log)
+
+        num_samples = None
+        for s_i in range(self.hps['batch_step']):                
+            # Build batch logs.
+            batch_logs = {'batch': s_i + 1, 'size': num_samples}
+            callbacks._call_batch_hook(ModeKeys.TEST
+                                                , 'begin'
+                                                , s_i
+                                                , batch_logs)
+
+            if self.nn_arch['label_usage']:
+                z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
+                        + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))]
+            else:
+                z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
+            
+            z_p_outputs_b = [np.ones(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
+            
+            # Train gen_disc.
+            # Create normal random inputs.
+            internal_inputs = []
+            
+            if self.nn_arch['label_usage']:                                                
+                for inp in self.gen_disc.inputs[2:]:
+                    if K.ndim(inp) == 4:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:]))))
+                    else:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:]))))
+            else:                                                
+                for inp in self.gen_disc.inputs[1:]:
+                    if K.ndim(inp) == 4:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:]))))
+                    else:
+                        internal_inputs.append(np.random.normal(size=tuple([num_samples] \
+                                                                   + list(K.int_shape(inp)[1:]))))                      
+            
+            if self.conf['multi_gpu']:
+                outs = self.gen_disc_p.train_on_batch(z_inputs_b + internal_inputs
+                                                      , z_p_outputs_b
+                                                      , reset_metrics=False)
+            else:
+                outs = self.gen_disc.train_on_batch(z_inputs_b + internal_inputs
+                                                    , z_p_outputs_b
+                                                    , reset_metrics=False)
+
+            del z_inputs_b, internal_inputs, z_p_outputs_b
+
+            outs = to_list(outs)
+            
+            if s_i == 0:
+                aggr_metrics.create(outs)
+            
+            if self.conf['multi_gpu']:
+                metrics_names = ['loss'] + [v.name for v in self.gen_disc_p.loss_functions] 
+            else:
+                metrics_names = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
+            
+            for l, o in zip(metrics_names, outs): #?
+                batch_logs[l] = o
+
+            callbacks._call_batch_hook(ModeKeys.TEST
+                                                , 'end'
+                                                , s_i
+                                                , batch_logs)
+            print('\n', batch_logs)
+        
+        aggr_metrics.finalize()
+        
+        # Make epochs log.
+        outs = to_list(aggr_metrics.results)
+        for out_label, out in zip(out_labels, outs):
+            epochs_log[out_label] = out
+
+        callbacks.on_epoch_end(0, epochs_log)
+                           
+        if self.conf['multi_gpu']:
+            self.gen_disc_p._successful_loop_finish = True
+        else:
+            self.gen_disc._successful_loop_finish = True
+            
+        callbacks._call_end_hook(ModeKeys.TEST)
+
+        if self.conf['multi_gpu']:
+            return self.gen_disc_p.history
+        else:
+            return self.gen_disc.history
         
     def generate(self, latents, labels, *args, **kwargs):
         """Generate styled images.
@@ -1263,12 +1523,7 @@ class StyleGAN(AbstractGAN):
         
         s_images[0] = (s_images[0] * 0.5 + 0.5) #Label?
         return s_images
-    
-    def evaluate(self):
-        """Evaluate."""
-        # TODO
-        pass
-                         
+                             
 def main():
     """Main."""
     
@@ -1289,15 +1544,6 @@ def main():
         te = time.time()
         
         print('Elasped time: {0:f}s'.format(te-ts))
-    elif conf['mode'] == 'evaluate':
-        # Evaluate.
-        s_gan = StyleGAN(conf)
-        
-        ts = time.time()
-        s_gan.evaluate()
-        te = time.time()
-        
-        print('Elasped time: {0:f}s'.format(te-ts))        
-        
+               
 if __name__ == '__main__':    
     main()               

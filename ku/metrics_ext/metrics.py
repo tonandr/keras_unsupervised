@@ -16,7 +16,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 from tensorflow.keras.metrics import MeanIoU
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops, array_ops, confusion_matrix
@@ -24,8 +23,9 @@ import tensorflow.keras.backend as K
 
 class MeanIoUExt(MeanIoU):
     """Calculate the mean IoU for one hot truth and prediction vectors."""
-    def __init__(self, num_classes, name=None, dtype=None):
+    def __init__(self, num_classes, accum_enable=True, name=None, dtype=None):
         super(MeanIoUExt, self).__init__(num_classes, name=name, dtype=dtype)
+        self.accum_enable = accum_enable
     
     def update_state(self, y_true, y_pred, sample_weight=None):
         """Accumulated the confusion matrix statistics with one hot truth and prediction data.
@@ -69,5 +69,6 @@ class MeanIoUExt(MeanIoU):
             self.num_classes,
             weights=sample_weight,
             dtype=dtypes.float64)
-        return self.total_cm.assign_add(current_cm)
+        return self.total_cm.assign_add(current_cm) if self.accum_enable \
+            else self.total_cm.assign(current_cm)
         

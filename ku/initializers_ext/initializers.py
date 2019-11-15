@@ -16,25 +16,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.op.init_ops import VarianceScaling
+from tensorflow_core.python.ops.init_ops import VarianceScaling
 
 def he_normal(seed=None, scale=2.):
-  """He normal initializer.
-  It draws samples from a truncated normal distribution centered on 0
-  with standard deviation (after truncation) given by
-  `stddev = sqrt(2 / fan_in)` where `fan_in` is the number of
-  input units in the weight tensor.
-  Arguments:
-      seed: A Python integer. Used to seed the random generator.
-  Returns:
-      An initializer.
-  References:
-      [He et al., 2015]
-      (https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)
-      # pylint: disable=line-too-long
-      ([pdf](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/He_Delving_Deep_into_ICCV_2015_paper.pdf))
-  """
-  return VarianceScaling(
-      scale=scale, mode="fan_in", distribution="truncated_normal", seed=seed)
-  
-  
+    """He normal initializer.
+    It draws samples from a truncated normal distribution centered on 0
+    with standard deviation (after truncation) given by
+    `stddev = sqrt(2 / fan_in)` where `fan_in` is the number of
+    input units in the weight tensor.
+      
+    Parameters
+    ----------
+    seed: A Python integer. Used to seed the random generator.
+    
+    Returns
+    -------
+    An initializer.
+    
+    References
+    ----------
+        [He et al., 2015]
+        (https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)
+        # pylint: disable=line-too-long
+        ([pdf](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/He_Delving_Deep_into_ICCV_2015_paper.pdf))
+    """
+    return VarianceScaling(
+        scale=scale, mode="fan_in", distribution="truncated_normal", seed=seed)
