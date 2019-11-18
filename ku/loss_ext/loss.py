@@ -16,16 +16,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 import tensorflow as tf
-from tensorflow.keras import Input
+import tensorflow.keras.backend as K
+
 from tensorflow.python.keras.losses import LossFunctionWrapper
 from tensorflow.python.framework import ops, smart_cond
 from tensorflow.python.ops import math_ops, array_ops
-import tensorflow.keras.backend as K
 from tensorflow.python.keras.utils import losses_utils
 
+# Constants.
 EPSILON = 1e-8
 
 class CategoricalCrossentropyWithLabelGT(LossFunctionWrapper):
@@ -43,69 +42,48 @@ class CategoricalCrossentropyWithLabelGT(LossFunctionWrapper):
             , from_logits=from_logits
             , label_smoothing=label_smoothing) 
 
-class DiscExtRegularLoss1(LossFunctionWrapper):
+class GANLogLoss(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
-                 , name='disc_ext_regular_loss1'):
-        super(DiscExtRegularLoss1, self).__init__(
-            disc_ext_regular_loss1, name=name, reduction=reduction)
+                 , name='gan_los_loss'):
+        super(GANLogLoss, self).__init__(
+            gan_log_loss, name=name, reduction=reduction)
 
-class DiscExtRegularLoss2(LossFunctionWrapper):
+class GANLogInverseLoss(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
-                 , name='disc_ext_regular_loss2'):
-        super(DiscExtRegularLoss2, self).__init__(
-            disc_ext_regular_loss2, name=name, reduction=reduction)
+                 , name='gan_log_inverse_loss'):
+        super(GANLogInverseLoss, self).__init__(
+            gan_log_inverse_loss, name=name, reduction=reduction)
 
-class GenDiscRegularLoss1(LossFunctionWrapper):
+class WGANLoss(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gen_disc_regular_loss1'):
-        super(GenDiscRegularLoss1, self).__init__(
-            gen_disc_regular_loss1, name=name, reduction=reduction)
+                 , name='wgan_loss'):
+        super(WGANLoss, self).__init__(
+            wgan_loss, name=name, reduction=reduction)
 
-class GenDiscRegularLoss2(LossFunctionWrapper):
+class WGANGPLoss(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gen_disc_regular_loss2'):
-        super(GenDiscRegularLoss2, self).__init__(
-            gen_disc_regular_loss2, name=name, reduction=reduction)
-
-class DiscExtWGANLoss(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='disc_ext_wgan_loss'):
-        super(DiscExtWGANLoss, self).__init__(
-            disc_ext_wgan_loss, name=name, reduction=reduction)
-
-class DiscExtWGANGPLoss(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='disc_ext_wgan_gp_loss'
+                 , name='wgan_gp_loss'
                  , input_variables=None
                  , wgan_lambda=10.0
                  , wgan_target=1.0):
-        super(DiscExtWGANGPLoss, self).__init__(
-            disc_ext_wgan_gp_loss
+        super(WGANGPLoss, self).__init__(
+            wgan_gp_loss
             , name=name
             , reduction=reduction
             , input_variables=input_variables
             , wgan_lambda = wgan_lambda
             , wgan_target = wgan_target)
 
-class GenDiscWGANLoss(LossFunctionWrapper):
+class SoftPlusInverseLoss(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gen_disc_wgan_loss'):
-        super(GenDiscWGANLoss, self).__init__(
-            gen_disc_wgan_loss, name=name, reduction=reduction)
-
-class SoftPlusNonSatLoss(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='softplus_non_sat_loss'):
-        super(SoftPlusNonSatLoss, self).__init__(
-            softplus_non_sat_loss, name=name, reduction=reduction)
+                 , name='softplus_inverse_loss'):
+        super(SoftPlusInverseLoss, self).__init__(
+            softplus_inverse_loss, name=name, reduction=reduction)
 
 class SoftPlusLoss(LossFunctionWrapper):
     def __init__(self
@@ -130,20 +108,6 @@ class RPenaltyLoss(LossFunctionWrapper):
             , input_variable_orders=input_variable_orders
             , r_gamma = r_gamma)
 
-class SoftPlusNonSatRPenaltyLoss(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='softplus_non_sat_r_penalty_loss'
-                 , input_variables=None
-                 , r_gamma=10.0
-                 , wgan_target=1.0):
-        super(SoftPlusNonSatRPenaltyLoss, self).__init__(
-            softplus_non_sat_r_penalty_loss
-            , name=name
-            , reduction=reduction
-            , input_variables=input_variables
-            , r_gamma = r_gamma)
-
 def categorical_corssentropy_with_label_gt(y_true, y_pred, num_classes=2, from_logits=False, label_smoothing=0):
     y_true = K.one_hot(math_ops.cast(y_true, 'int32'), num_classes)
     y_pred = ops.convert_to_tensor(y_pred)
@@ -158,32 +122,22 @@ def categorical_corssentropy_with_label_gt(y_true, y_pred, num_classes=2, from_l
                                    _smooth_labels, lambda: y_true)
     return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
-def disc_ext_regular_loss1(y_true, y_pred):
+def gan_log_loss(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
     return K.mean(K.log(y_pred + EPSILON), axis=-1)
 
-def disc_ext_regular_loss2(y_true, y_pred):
+def gan_log_inverse_loss(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
     return K.mean(K.log(1.0 - y_pred + EPSILON), axis=-1)
 
-def gen_disc_regular_loss1(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(K.log(1.0 - y_pred + EPSILON), axis=-1)# Axis?
-
-def gen_disc_regular_loss2(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(K.log(y_pred + EPSILON), axis=-1)
-
-def disc_ext_wgan_loss(y_true, y_pred):
+def wgan_loss(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
     return K.mean(y_pred, axis=-1)
 
-def disc_ext_wgan_gp_loss(y_true
+def wgan_gp_loss(y_true
                           , y_pred
                           , input_variables=None
                           , wgan_lambda=10.0
@@ -199,12 +153,7 @@ def disc_ext_wgan_gp_loss(y_true
     norm = K.sqrt(K.sum(K.square(grads), axis=[1, 2, 3])) #?
     return (wgan_lambda / (wgan_target ** 2)) * K.square(norm - wgan_target) #?
 
-def gen_disc_wgan_loss(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(y_pred, axis=-1)
-
-def softplus_non_sat_loss(y_true, y_pred):
+def softplus_inverse_loss(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
     y_true = math_ops.cast(y_true, y_pred.dtype)
     return K.softplus(-1.0 * y_pred) #?
@@ -225,15 +174,3 @@ def r_penalty_loss(y_true, y_pred, model, input_variable_orders=None, r_gamma=10
     grads = model.tape_handler.gradient(K.sum(y_pred, axis=-1), inputs)
     r_penalty = K.sum(K.square(grads), axis=[1, 2, 3])
     return r_gamma * 0.5 * r_penalty
-    
-def softplus_non_sat_r_penalty_loss(y_true, y_pred, input_variables, r_gamma = 10.0): #?
-    if input_variables is None:
-        raise ValueError('input_variables must be assigned.')
-    global tape #?
-    assert tf.executing_eagerly() and 'tape' in dir() and isinstance(tape, tf.GradientTape) and tape._persistent
-
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)     
-    grads = K.gradients(K.sum(y_pred, axis=-1), input_variables)[0]
-    r_penalty = K.sum(K.square(grads), axis=[1, 2, 3])
-    return K.softplus(-1.0 * y_pred) + r_gamma * 0.5 * r_penalty
