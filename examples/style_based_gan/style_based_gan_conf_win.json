@@ -10,8 +10,8 @@
 		"beta_1" : 0.0,
 		"beta_2" : 0.99,
 		"decay" : 0.0,
-		"epochs" : 120,
-		"batch_step" : 128,
+		"epochs" : 32,
+		"batch_step" : 256,
 		"disc_k_step" : 2,
 		"mini_batch_size" : 8,
 		"mixing_prob" : 0.9,
@@ -24,8 +24,13 @@
 	},
 	"nn_arch" : {
 		"label_usage" : true,
-		"resolution" : 64
+		"resolution" : 64,
+		"num_classes" : 70000
 	},
+	"gen_hps" : {
+	},	
+	"gen_nn_arch" : {
+	},	
 	"map_hps" : {
 	},	
 	"map_nn_arch" : {

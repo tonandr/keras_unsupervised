@@ -10,7 +10,7 @@ import shutil
 import numpy as np
 
 import tensorflow as tf
-import tensorflow.keras.backend as K 
+import tensorflow_core.python.keras.backend as K 
 from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
@@ -28,13 +28,15 @@ from ..loss_ext import WGANLoss, WGANGPLoss
 from ..loss_ext import SoftPlusInverseLoss, SoftPlusLoss, RPenaltyLoss
 
 # GAN mode.
-STYLE_GAN = 0
-PIX2PIX_GAN = 1
+STYLE_GAN_REGULAR = 0
+STYLE_GAN_WGAN_GP = 1
+STYLE_GAN_SOFTPLUS_INVERSE_R1_GP = 2
+PIX2PIX_GAN = 3
 
 # Loss configuration type.
 LOSS_CONF_TYPE_REGULAR = 0
 LOSS_CONF_TYPE_WGAN_GP = 1
-LOSS_CONF_TYPE_NON_SAT_R1 = 2
+LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP = 2
 
 def get_loss_conf(hps, lc_type, *args, **kwargs):
     """Get the GAN loss configuration.
@@ -53,8 +55,8 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
     """
     loss_conf = {}
     if lc_type == LOSS_CONF_TYPE_REGULAR:
-        loss_conf = {'disc_ext_losses': [GANLogLoss(), GANLogInverseLoss()]
-                    , 'disc_ext_loss_weights': [-1.0, -1.0]
+        loss_conf = {'disc_ext_losses': [GANLogLoss(), GANLogLoss()]
+                    , 'disc_ext_loss_weights': [-1.0, 1.0]
                     , 'gen_disc_losses': [GANLogLoss()]
                     , 'gen_disc_loss_weights': [-1.0]}
     elif lc_type == LOSS_CONF_TYPE_WGAN_GP:
@@ -66,7 +68,7 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
                     , 'disc_ext_loss_weights': [-1.0, 1.0, 1.0]
                     , 'gen_disc_losses': [WGANLoss()]
                     , 'gen_disc_loss_weights': [-1.0]}
-    elif lc_type == LOSS_CONF_TYPE_NON_SAT_R1:
+    elif lc_type == LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP:
         loss_conf = {'disc_ext_losses': [SoftPlusInverseLoss(name='real_loss')
                                 , RPenaltyLoss(name='r_penalty_loss'
                                                , model=kwargs['disc_ext']
@@ -101,38 +103,46 @@ class AbstractGAN(ABC):
         if self.conf['model_loading']:
             if not hasattr(self, 'custom_objects'):
                 RuntimeError('Before models, custom_objects must be created.')
-                                                                    
+                                                          
+            self.custom_objects['ModelExt'] = ModelExt                                                          
             with CustomObjectScope(self.custom_objects):
                 # disc_ext.
-                self.disc_ext_init = load_model(self.DISC_EXT_PATH, custom_objects=self.custom_objects, compile=False) #?
+                self.disc_ext = load_model(self.DISC_EXT_PATH
+                                           , custom_objects=self.custom_objects
+                                           , compile=False) #?
                  
                 # gen_disc.
-                self.gen_disc_init = load_model(self.GEN_DISC_PATH, custom_objects=self.custom_objects, compile=False) #?
+                self.gen_disc = load_model(self.GEN_DISC_PATH
+                                           , custom_objects=self.custom_objects
+                                           , compile=False) #?
                                         
-                # gen.
-                self.gen = self.gen_disc_init.get_layer('gen')
+                # gen, disc.
+                self.gen = self.gen_disc.get_layer('gen')
+                self.disc = self.gen_disc.get_layer('disc')
                 
-                if conf['multi_gpu']:
-                    self.disc_ext = multi_gpu_model(self.disc_ext_init, gpus=self.conf['num_gpus'])
+                if conf['multi_gpu']: #?
+                    self.disc_ext = multi_gpu_model(self.disc_ext
+                                                    , gpus=self.conf['num_gpus']
+                                                    , name='disc_ext')
                     """
-                    self.disc_ext.compile(optimizer=self.disc_ext_init.optimizer
-                                          , loss=self.disc_ext_init.losses
-                                          , loss_weights=self.disc_ext_init.loss_weights
+                    self.disc_ext.compile(optimizer=self.disc_ext.optimizer
+                                          , loss=self.disc_ext.losses
+                                          , loss_weights=self.disc_ext.loss_weights
                                           , run_eagerly=True)
                     """
                     
-                    self.gen_disc = multi_gpu_model(self.gen_disc_init, gpus=self.conf['num_gpus'])
+                    self.gen_disc = multi_gpu_model(self.gen_disc
+                                                    , gpus=self.conf['num_gpus']
+                                                    , name='gen_disc')
                     """
-                    self.gen_disc.compile(optimizer=self.gen_disc_init.optimizer
-                                          , loss=self.gen_disc_init.losses
-                                          , loss_weights=self.gen_disc_init.loss_weights
+                    self.gen_disc.compile(optimizer=self.gen_disc.optimizer
+                                          , loss=self.gen_disc.losses
+                                          , loss_weights=self.gen_disc.loss_weights
                                           , run_eagerly=True)
                     """
                     
-                    self.gen_p = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'])
-                else:
-                    self.disc_ext = self.disc_ext_init
-                    self.gen_disc = self.gen_disc_init
+                    self.gen = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'], name='gen') #?
+                    self.disc = multi_gpu_model(self.disc, gpus=self.conf['num_gpus'], name='disc') #?
 
             #self._is_gan_compiled = True        
     
@@ -154,15 +164,17 @@ class AbstractGAN(ABC):
         """Compose the GAN model."""
         raise NotImplementedError('compose_gan is not implemented.')
     
-    def create_compose_gan_with_mode_func(self, mode):
-        """Create the compose_gan_with_mode function.
+    def compose_gan_with_mode(self, mode):
+        """Compose gan with mode.
         
         Parameters
         ----------
         mode: Integer.
             GAN model composing mode.
         """
-        self.compose_gan = compose_gan_with_mode(self, mode)
+        disc_ext, gen_disc = compose_gan_with_mode(self.gen, self.disc, mode)
+        self.disc_ext = disc_ext
+        self.gen_disc = gen_disc
         
     def compile(self
                 , disc_ext_opt
@@ -191,24 +203,32 @@ class AbstractGAN(ABC):
         self._is_gan_compiled = True
     
     @abstractmethod
-    def gen_disc_ext_data_fun(self, generator, *args, **kwargs):
+    def gen_disc_ext_data_fun(self, generator, gen_prog_depth=None, disc_prog_depth=None, *args, **kwargs):
         """Generate disc_ext data.
         
         Parameters
         ----------
         generator: Generator.
             Data generator.
+        gen_prog_depth: Integer.
+            Partial generator model's layer depth (default: None).
+        disc_prog_depth: Integer.
+            Partial discriminator model's layer depth (default: None).
         """
         raise NotImplementedError('gen_disc_ext_data_fun is not implemented.')
 
     @abstractmethod
-    def gen_gen_disc_data_fun(self, generator, *args, **kwargs):
-        """Generate gen_disc data.
+    def gen_gen_disc_data_fun(self, generator, gen_prog_depth=None, disc_prog_depth=None, *args, **kwargs):
+        """Generate disc_ext data.
         
         Parameters
         ----------
         generator: Generator.
             Data generator.
+        gen_prog_depth: Integer.
+            Partial generator model's layer depth (default: None).
+        disc_prog_depth: Integer.
+            Partial discriminator model's layer depth (default: None).
         """
         raise NotImplementedError('gen_gen_disc_data_fun is not implemented.')        
     
@@ -285,7 +305,9 @@ class AbstractGAN(ABC):
         else:
             shutil.rmtree(os.path.join('results'))
             os.mkdir(os.path.join('results'))
-            
+        
+        enq = None
+        val_enq = None    
         try:                    
             # Get the validation generator and output generator.
             if do_validation:
@@ -487,13 +509,15 @@ class AbstractGAN(ABC):
                 if not do_validation: #?
                     if e_i % validation_freq == 0: #?
                         # disc_ext.
-                        val_outs_disc_ext = self._evaluate_disc_ext(val_generator #?
+                        val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
+                                                                      , val_generator #?
                                                                       , gen_disc_ext_data_fun
                                                                       , callbacks=callbacks_disc_ext
                                                                       , workers=0)
                         
                         # gen_disc.
-                        val_outs_gen_disc = self._evaluate_gen_disc(val_generator
+                        val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
+                                                                      , val_generator
                                                                       , gen_gen_disc_data_fun
                                                                       , callbacks=callbacks_gen_disc
                                                                       , workers=0)                                            
@@ -519,17 +543,16 @@ class AbstractGAN(ABC):
             callbacks_gen_disc._call_end_hook(ModeKeys.TRAIN) 
         finally:
             try:
-                if enq is not None:
+                if enq:
                     enq.stop()
             finally:
-                if val_enq is not None:
+                if val_enq:
                     val_enq.stop()
 
         return self.disc_ext.history, self.gen_disc.history
 
     def fit_generator_progressively(self
                       , generator
-                      , fixed_layer_names
                       , gen_disc_ext_data_fun
                       , gen_gen_disc_data_fun
                       , verbose=1
@@ -593,14 +616,9 @@ class AbstractGAN(ABC):
                     
         if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
             warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
-
-        # Initialize the results directory
-        if not os.path.isdir(os.path.join('results')):
-            os.mkdir(os.path.join('results'))
-        else:
-            shutil.rmtree(os.path.join('results'))
-            os.mkdir(os.path.join('results'))
-            
+        
+        enq = None
+        val_enq = None     
         try:                    
             # Get the validation generator and output generator.
             if do_validation:
@@ -726,7 +744,20 @@ class AbstractGAN(ABC):
                 callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
                 callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
 
-                num_samples = None
+                # Train disc_ext, gen_disc models progressively according to the schedule for epochs.
+                # Make partial disc_ext, gen_disc.
+                partial_gen = self.gen.create_prog_model(ModelExt.PROGRESSIVE_MODE_FORWARD
+                                                         , self.nn_arch['gen_prog_depths'][e_i]
+                                                         , self.nn_arch['gen_prog_fixed_layer_names'])
+                partial_disc = self.disc.create_prog_model(ModelExt.PROGRESSIVE_MODE_BACKWARD
+                                                         , self.nn_arch['disc_prog_depths'][e_i]
+                                                         , self.nn_arch['disc_prog_fixed_layer_names'])
+                partial_disc_ext, partial_gen_disc = compose_gan_with_mode(partial_gen
+                                                                           , partial_disc
+                                                                           , self.nn_arch['composing_mode']
+                                                                           , multi_gpu=self.conf['multi_gpu']
+                                                                           , num_gpus=self.conf['num_gpus'])
+                
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
                         # Build batch logs.
@@ -736,8 +767,10 @@ class AbstractGAN(ABC):
                                                             , self.hps['disc_k_step'] * s_i + k_i + 1
                                                             , k_batch_logs)
                                                 
-                        inputs, outputs = gen_disc_ext_data_fun(output_generator)
-                        outs = self.disc_ext.train_on_batch(inputs
+                        inputs, outputs = gen_disc_ext_data_fun(output_generator
+                                                                , gen_prog_depth=self.nn_arch['gen_prog_depths'][e_i]
+                                                                , disc_prog_depth=self.nn_arch['disc_prog_depths'][e_i])
+                        outs = partial_disc_ext.train_on_batch(inputs
                                  , outputs
                                  , class_weight=class_weight
                                  , reset_metrics=True) #?
@@ -765,8 +798,10 @@ class AbstractGAN(ABC):
                                                         , s_i
                                                         , batch_logs)
 
-                    inputs, outputs = gen_gen_disc_data_fun(output_generator)
-                    outs = self.gen_disc.train_on_batch(inputs
+                    inputs, outputs = gen_disc_ext_data_fun(output_generator
+                                                                , gen_prog_depth=self.nn_arch['gen_prog_depths'][e_i]
+                                                                , disc_prog_depth=self.nn_arch['disc_prog_depths'][e_i])
+                    outs = partial_gen_disc.train_on_batch(inputs
                                                         , outputs
                                                         , class_weight=class_weight
                                                         , reset_metrics=False)
@@ -803,13 +838,15 @@ class AbstractGAN(ABC):
                 if do_validation: #?
                     if e_i % validation_freq == 0: #?
                         # disc_ext.
-                        val_outs_disc_ext = self._evaluate_disc_ext(val_generator
+                        val_outs_disc_ext = self._evaluate_disc_ext(partial_disc_ext
+                                                                      , val_generator
                                                                       , gen_disc_ext_data_fun
                                                                       , callbacks=callbacks_disc_ext
                                                                       , workers=0)
                         
                         # gen_disc.
-                        val_outs_gen_disc = self._evaluate_gen_disc(val_generator
+                        val_outs_gen_disc = self._evaluate_gen_disc(partial_gen_disc
+                                                                      , val_generator
                                                                       , gen_gen_disc_data_fun
                                                                       , callbacks=callbacks_gen_disc
                                                                       , workers=0)                                            
@@ -832,23 +869,24 @@ class AbstractGAN(ABC):
             callbacks_gen_disc._call_end_hook(ModeKeys.TRAIN) 
         finally:
             try:
-                if enq is not None:
+                if enq:
                     enq.stop()
             finally:
-                if val_enq is not None:
+                if val_enq:
                     val_enq.stop()
 
         return self.disc_ext.history, self.gen_disc.history
 
     def save_gan_model(self):
         """Save the GAN model."""
-        assert hasattr(self, 'disc_ext_init') and hasattr(self, 'gen_disc_init')
+        assert hasattr(self, 'disc_ext') and hasattr(self, 'gen_disc')
         
         with CustomObjectScope(self.custom_objects):
-            self.disc_ext_init.save(self.DISC_EXT_PATH, save_format='h5')
-            self.gen_disc_init.save(self.GEN_DISC_PATH, save_format='h5')
+            self.disc_ext.save(self.DISC_EXT_PATH, save_format='h5')
+            self.gen_disc.save(self.GEN_DISC_PATH, save_format='h5')
 
     def _evaluate_disc_ext(self
+                      , disc_ext
                       , generator
                       , gen_disc_ext_data_func
                       , verbose=1
@@ -860,6 +898,8 @@ class AbstractGAN(ABC):
         
         Parameters
         ----------
+        disc_ext: ModelExt.
+            Discriminator extension.
         generator: Generator
             Test data generator.
         verbose: Integer 
@@ -885,12 +925,12 @@ class AbstractGAN(ABC):
         if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
             warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
         
-        out_labels = ['loss'] + [v.name for v in self.disc_ext.loss_functions] #?                                                   
+        out_labels = ['loss'] + [v.name for v in disc_ext.loss_functions] #?                                                   
         aggr_metrics = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
         
         # Evaluate.
         callbacks._call_begin_hook(ModeKeys.TEST)
-        self.disc_ext.reset_metrics()
+        disc_ext.reset_metrics()
         epochs_log= {}      
         callbacks.on_epoch_begin(0, epochs_log)
 
@@ -903,14 +943,14 @@ class AbstractGAN(ABC):
                                                 , k_batch_logs)
             
             inputs, outputs = gen_disc_ext_data_func(generator)
-            outs = self.disc_ext.test_on_batch(inputs, outputs, reset_metrics=False) #?  
+            outs = disc_ext.test_on_batch(inputs, outputs, reset_metrics=False) #?  
             del inputs, outputs
             outs = to_list(outs) #?
             
             if k_i == 0:
                 aggr_metrics.create(outs)
             
-            metrics_names = ['loss'] + [v.name for v in self.disc_ext.loss_functions]                            
+            metrics_names = ['loss'] + [v.name for v in disc_ext.loss_functions]                            
                 
             for l, o in zip(metrics_names, outs):
                 k_batch_logs[l] = o                        
@@ -936,13 +976,14 @@ class AbstractGAN(ABC):
                                                                       
         callbacks.on_epoch_end(0, epochs_log)
                     
-        self.disc_ext._successful_loop_finish = True
+        disc_ext._successful_loop_finish = True
             
         callbacks._call_end_hook(ModeKeys.TEST)
 
         return aggr_metrics.results
     
     def _evaluate_gen_disc(self
+                      , gen_disc
                       , generator
                       , gen_gen_disc_data_func
                       , verbose=1
@@ -954,6 +995,8 @@ class AbstractGAN(ABC):
         
         Parameters
         ----------
+        gen_disc: ModelExt.
+            Generator and discriminator composite model.
         generator: Generator
             Test data generator.
         verbose: Integer 
@@ -979,12 +1022,12 @@ class AbstractGAN(ABC):
         if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
             warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
         
-        out_labels = ['loss'] + [v.name for v in self.gen_disc.loss_functions] #?                                                   
+        out_labels = ['loss'] + [v.name for v in gen_disc.loss_functions] #?                                                   
         aggr_metrics = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
         
         # Evaluate.
         callbacks._call_begin_hook(ModeKeys.TEST)
-        self.gen_disc.reset_metrics()
+        gen_disc.reset_metrics()
         epochs_log= {}      
         callbacks.on_epoch_begin(0, epochs_log)
 
@@ -997,14 +1040,14 @@ class AbstractGAN(ABC):
                                                 , batch_logs)
 
             inputs, outputs = gen_gen_disc_data_func(generator)
-            outs = self.gen_disc.test_on_batch(inputs, outputs, reset_metrics=False) #?  
+            outs = gen_disc.test_on_batch(inputs, outputs, reset_metrics=False) #?  
             del inputs, outputs
             outs = to_list(outs)
             
             if s_i == 0:
                 aggr_metrics.create(outs)
             
-            metrics_names = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
+            metrics_names = ['loss'] + [v.name for v in gen_disc.loss_functions]
             
             for l, o in zip(metrics_names, outs): #?
                 batch_logs[l] = o
@@ -1024,7 +1067,7 @@ class AbstractGAN(ABC):
 
         callbacks.on_epoch_end(0, epochs_log)
                            
-        self.gen_disc._successful_loop_finish = True
+        gen_disc._successful_loop_finish = True
             
         callbacks._call_end_hook(ModeKeys.TEST)
 
@@ -1051,119 +1094,113 @@ class AbstractGAN(ABC):
         
         return results
     
-def compose_gan_with_mode(gan_model, mode):
+def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
     """Compose the GAN model with mode.
     
     Parameters
     ----------
-    gan_model: AbstractGAN instance.
-        GAN model.
+    gan: ModelExt.
+        Generator model.
+    disc: ModelExt.
+        Discriminator model.
     mode: Integer.
         GAN composing mode.
     """
-    
-    # Check exception.
-    assert hasattr(gan_model, 'gen') and hasattr(gan_model, 'disc')
-    
-    if mode == STYLE_GAN:
+    assert isinstance(gen, ModelExt) and isinstance(disc, ModelExt)
+            
+    if mode == STYLE_GAN_REGULAR:
         # Compose gan.                    
         # Compose disc_ext.
         # disc.
-        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.disc.inputs]  
-        x_outputs = [gan_model.disc(x_inputs)] if len(gan_model.disc.outputs) == 1 else gan_model.disc(x_inputs) #? 
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs]  
+        x_outputs = [disc(x_inputs)] if len(disc.outputs) == 1 else disc(x_inputs) #? 
         
         # gen and disc.
-        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.gen.inputs] 
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
                
-        gan_model.gen.trainable = False
-        for layer in gan_model.gen.layers: layer.trainable = False
-        z_outputs = [gan_model.gen(z_inputs)] if len(gan_model.gen.outputs) == 1 else gan_model.gen(z_inputs)
+        gen.trainable = False
+        for layer in gen.layers: layer.trainable = False
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
         
-        gan_model.disc.trainable = True
-        for layer in gan_model.disc.layers: layer.trainable = True
-        x2_outputs = [gan_model.disc(z_outputs)] if len(gan_model.disc.outputs) == 1 else gan_model.disc(z_outputs)
+        disc.trainable = True
+        for layer in disc.layers: layer.trainable = True
+        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
         
-        gan_model.disc_ext_init = ModelExt(inputs=x_inputs + z_inputs
+        disc_ext = ModelExt(inputs=x_inputs + z_inputs
                                            , outputs=x_outputs + x2_outputs
                                            , name='disc_ext')
-        if gan_model.conf['multi_gpu']:
-            gan_model.disc_ext = multi_gpu_model(gan_model.disc_ext_init, gpus=gan_model.conf['num_gpus']) # Name?   
-        else:
-            gan_model.disc_ext = gan_model.disc_ext_init
+        if multi_gpu:
+            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
                 
         # Compose gen_disc.
-        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.gen_inputs] 
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
-        gan_model.gen.trainable = True
-        for layer in gan_model.gen.layers: layer.trainable = True    
-        z_outputs = [gan_model.gen(z_inputs)] if len(gan_model.gen.outputs) == 1 else gan_model.gen(z_inputs)
+        gen.trainable = True
+        for layer in gen.layers: layer.trainable = True    
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
         
-        gan_model.disc.trainable = False
-        for layer in gan_model.disc.layers: layer.trainable = False
-        z_p_outputs = [gan_model.disc(z_outputs)] if len(gan_model.disc.outputs) == 1 else gan_model.disc(z_outputs)
+        disc.trainable = False
+        for layer in disc.layers: layer.trainable = False
+        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
 
-        gan_model.gen_disc_init = ModelExt(inputs=z_inputs
+        gen_disc = ModelExt(inputs=z_inputs
                                            , outputs=z_p_outputs
                                            , name='gen_disc')
-        if gan_model.conf['multi_gpu']:
-            gan_model.gen_disc = multi_gpu_model(gan_model.gen_disc_init, gpus=gan_model.conf['num_gpus'])
-        else:
-            gan_model.gen_disc = gan_model.gen_disc_init 
+        if multi_gpu:
+            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')
     elif mode == PIX2PIX_GAN:
         # Compose gan.                    
         # Compose disc_ext.
         # disc.
-        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.disc.inputs]  
-        x_outputs = [gan_model.disc(x_inputs)] if len(gan_model.disc.outputs) == 1 else gan_model.disc(x_inputs) #? 
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs]  
+        x_outputs = [disc(x_inputs)] if len(disc.outputs) == 1 else disc(x_inputs) #? 
         
         # gen and disc.
-        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.gen.inputs]
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs]
                
-        gan_model.gen.trainable = False
-        for layer in gan_model.gen.layers: layer.trainable = False
-        z_outputs = [gan_model.gen(z_inputs)] if len(gan_model.gen.outputs) == 1 else gan_model.gen(z_inputs)
+        gen.trainable = False
+        for layer in gen.layers: layer.trainable = False
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
         
-        gan_model.disc.trainable = True
-        for layer in gan_model.disc.layers: layer.trainable = True
+        disc.trainable = True
+        for layer in disc.layers: layer.trainable = True
         
         # Get image inputs.
-        image_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.disc.inputs \
+        image_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs \
                          if 'image' in t.name]        
                         
-        x2_outputs = [gan_model.disc(image_inputs + z_outputs)] \
-            if len(gan_model.disc.outputs) == 1 else gan_model.disc(image_inputs + z_outputs)
+        x2_outputs = [disc(image_inputs + z_outputs)] \
+            if len(disc.outputs) == 1 else disc(image_inputs + z_outputs)
         
-        gan_model.disc_ext_init = ModelExt(inputs=x_inputs + z_inputs + image_inputs
+        disc_ext = ModelExt(inputs=x_inputs + z_inputs + image_inputs
                                            , outputs=x_outputs + x2_outputs
                                            , name='disc_ext')
-        if gan_model.conf['multi_gpu']:
-            gan_model.disc_ext = multi_gpu_model(gan_model.disc_ext_init, gpus=gan_model.conf['num_gpus'])
-        else:
-            gan_model.disc_ext = gan_model.disc_ext_init    
+        if multi_gpu:
+            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') 
                 
         # Compose gen_disc.
-        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.gen.inputs] 
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
-        gan_model.gen.trainable = True
-        for layer in gan_model.gen.layers: layer.trainable = True    
-        z_outputs = [gan_model.gen(z_inputs)] if len(gan_model.gen.outputs) == 1 else gan_model.gen(z_inputs)
+        gen.trainable = True
+        for layer in gen.layers: layer.trainable = True    
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
         
-        gan_model.disc.trainable = False
-        for layer in gan_model.disc.layers: layer.trainable = False
+        disc.trainable = False
+        for layer in disc.layers: layer.trainable = False
 
         # Get image inputs.
-        image_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gan_model.disc.inputs \
+        image_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs \
                         if 'image' in t.name]
          
-        z_p_outputs = [gan_model.disc(image_inputs + z_outputs)] \
-            if len(gan_model.disc.outputs) == 1 else gan_model.disc(image_inputs + z_outputs)
+        z_p_outputs = [disc(image_inputs + z_outputs)] \
+            if len(disc.outputs) == 1 else disc(image_inputs + z_outputs)
 
-        gan_model.gen_disc_init = ModelExt(inputs=z_inputs + image_inputs
+        gen_disc = ModelExt(inputs=z_inputs + image_inputs
                                            , outputs=z_p_outputs + z_outputs 
                                            , name='gen_disc')
-        if gan_model.conf['multi_gpu']:
-            gan_model.gen_disc = multi_gpu_model(gan_model.gen_disc_init, gpus=gan_model.conf['num_gpus'])
-        else:
-            gan_model.gen_disc = gan_model.gen_disc_init
+        if multi_gpu:
+            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus)
     else:
-        ValueError('mode is not valid.')            
+        ValueError('mode is not valid.')
+    
+    return disc_ext, gen_disc            
