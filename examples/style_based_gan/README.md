@@ -2,7 +2,7 @@
 ## Style based generative adverarial networks using Keras Unsupervied
 
 # Tasks
-- [ ] Develop Keras based Style-based GAN.
+- [X] Develop Keras based Style-based GAN.
 - [ ] Evaluate the performance of Keras based Style-based GAN.
 - [ ] Documentation.
 
