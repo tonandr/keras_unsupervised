@@ -1082,17 +1082,7 @@ class AbstractGAN(ABC):
             Inputs.
         """
         inputs = inputs if isinstance(inputs, (list, tuple)) else [inputs]
-        
-        if self.conf['multi_gpu']:
-            if hasattr(self, 'gen_p'):
-                results = self.gen_p.predict(inputs)
-            else:
-                self.gen_p = multi_gpu_model()
-                results = self.gen_p.predict(inputs)
-        else:
-            results = self.gen.predict(inputs)
-        
-        return results
+        return self.gen.predict(inputs)
     
 def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
     """Compose the GAN model with mode.

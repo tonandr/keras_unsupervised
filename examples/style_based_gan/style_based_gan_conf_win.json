@@ -1,7 +1,7 @@
 {
 	"mode" : "train",
 	"raw_data_path" : "D:\\topcoder\\keras_unsupervised\\examples\\style_based_gan\\resource\\thumbnails128x128",
-	"model_loading" : false,
+	"model_loading" : true,
 	"multi_gpu" : false,
 	"num_gpus" : 4,
 	"gan_mode": 2,

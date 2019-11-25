@@ -14,6 +14,7 @@ import platform
 import json
 import glob
 import shutil
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,13 @@ from tensorflow.keras.utils import Sequence
 from tensorflow.keras.utils import plot_model
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras import optimizers
+from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
+
+from tensorflow_core.python.keras.utils.generic_utils import to_list, CustomObjectScope
+from tensorflow_core.python.keras.utils.data_utils import iter_sequence_infinite
+from tensorflow_core.python.keras import callbacks as cbks
+from tensorflow_core.python.keras.engine import training_utils
+from tensorflow.python.keras.utils.mode_keys import ModeKeys #?
 
 from ku.engine_ext import ModelExt
 from ku.backprop import AbstractGAN
@@ -490,7 +498,7 @@ class StyleGAN(AbstractGAN):
                         , workers=0
                         , use_multiprocessing=False
                         , shuffle=True) #?
-        
+                
         """
         self.fit_generator_progressively(generator_tr
                         , self.gen_disc_ext_data_fun
@@ -501,6 +509,331 @@ class StyleGAN(AbstractGAN):
                         , use_multiprocessing=False
                         , shuffle=True) #?
         """
+
+    def fit_generator(self
+                      , generator
+                      , gen_disc_ext_data_fun
+                      , gen_gen_disc_data_fun
+                      , verbose=1
+                      , callbacks_disc_ext=None
+                      , callbacks_gen_disc=None
+                      , validation_data_gen=None #?
+                      , validation_steps=None
+                      , validation_freq=1 #?
+                      , class_weight=None #?
+                      , max_queue_size=10
+                      , workers=1
+                      , use_multiprocessing=False #?
+                      , shuffle=True
+                      , initial_epoch=0
+                      , save_f=True): #?
+        """Train the GAN model with the generator.
+        
+        Parameters
+        ----------
+        generator: Generator
+            Training data generator.
+        verbose: Integer 
+            Verbose mode (default=1).
+        callback_disc_ext: list
+            disc_ext callbacks (default=None).
+        callback_gen_disc: list
+            gen_disc callbacks (default=None).
+        validation_data_gen: Generator or Sequence
+            Validation generator or sequence (default=None).
+        validation_steps: Integer
+            Validation steps (default=None).
+        validation_freq: Integer
+            Validation frequency (default=1).
+        max_queue_size: Integer
+            Maximum size for the generator queue (default: 10).
+        workers: Integer
+            Maximum number of processes to get samples (default: 1, 0: main thread).
+        use_multiprocessing: Boolean
+            Multi-processing flag (default: False).
+        shuffle: Boolean
+            Batch shuffling flag (default: True).
+        initial_epoch: Integer
+            Initial epoch (default: 0).
+        
+        Returns
+        -------
+        Training history.
+            tuple
+        """
+        
+        # Check exception.
+        do_validation = bool(validation_data_gen)
+        if do_validation:
+            assert hasattr(validation_data_gen, 'next') or \
+                hasattr(validation_data_gen, '__next') or \
+                isinstance(validation_data_gen, Sequence)
+            
+            if not isinstance(validation_data_gen, Sequence):
+                assert validation_steps #?
+        
+            assert isinstance(validation_freq, int)
+                    
+        if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
+            warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
+
+        # Initialize the results directory
+        if not os.path.isdir(os.path.join('results')):
+            os.mkdir(os.path.join('results'))
+        else:
+            shutil.rmtree(os.path.join('results'))
+            os.mkdir(os.path.join('results'))
+        
+        enq = None
+        val_enq = None    
+        try:                    
+            # Get the validation generator and output generator.
+            if do_validation:
+                if workers > 0:
+                    if isinstance(validation_data_gen, Sequence):
+                        val_enq = OrderedEnqueuer(validation_data_gen
+                                                  , use_multiprocessing=use_multiprocessing) # shuffle?
+                        validation_steps = validation_steps or len(validation_data_gen)
+                    else:
+                        val_enq = GeneratorEnqueuer(validation_data_gen
+                                                    , use_multiprocessing=use_multiprocessing)
+                    
+                    val_enq.start(workers=workers, max_queue_size=max_queue_size)
+                    val_generator = val_enq.get()
+                else:
+                    if isinstance(validation_data_gen, Sequence):
+                        val_generator = iter_sequence_infinite(validation_data_gen)
+                        validation_steps = validation_steps or len(validation_data_gen)
+                    else:
+                        val_generator = validation_data_gen 
+            
+            if workers > 0:
+                if isinstance(generator, Sequence):
+                    enq = OrderedEnqueuer(generator
+                                      , use_multiprocessing=use_multiprocessing
+                                      , shuffle=shuffle)
+                else:
+                    enq = GeneratorEnqueuer(generator
+                                            , use_multiprocessing=use_multiprocessing)
+                    
+                enq.start(workers=workers, max_queue_size=max_queue_size)
+                output_generator = enq.get()
+            else:
+                if isinstance(generator, Sequence):
+                    output_generator = iter_sequence_infinite(generator)
+                else:
+                    output_generator = generator
+                 
+            # Callbacks.            
+            # disc_ext.
+            #out_labels_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
+            out_labels_disc_ext = ['loss'] + [v.name for v in self.disc_ext.loss_functions]
+            callback_metrics_disc_ext = out_labels_disc_ext \
+                + ['val_' + out_label for out_label in out_labels_disc_ext]
+            self.disc_ext.history = cbks.History()
+            _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
+            if verbose:
+                _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
+                                                     , stateful_metrics=[]))
+                
+            # Tensorboard callback.
+            callback_tb = TensorBoard(log_dir='.\\logs'
+                                           , histogram_freq=1
+                                           , batch_size=self.hps['mini_batch_size']
+                                           , write_graph=True
+                                           , write_images=True
+                                           , update_freq='batch')
+            _callbacks.append(callback_tb)
+                            
+            _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
+            callbacks_disc_ext = cbks.configure_callbacks(_callbacks
+                                                          , self.disc_ext
+                                                          , do_validation=do_validation
+                                                          , epochs=self.hps['epochs']
+                                                          , steps_per_epoch=self.hps['batch_step'] * self.hps['disc_k_step']
+                                                          , samples=self.hps['batch_step'] * self.hps['disc_k_step']
+                                                          , verbose=1
+                                                          , mode=ModeKeys.TRAIN)  
+          
+            # gen_disc.
+            #out_labels_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
+            out_labels_gen_disc = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
+            callback_metrics_gen_disc = out_labels_gen_disc \
+                + ['val_' + out_label for out_label in out_labels_gen_disc]
+            self.gen_disc.history = cbks.History()
+            _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
+            if verbose:
+                _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
+                                                     , stateful_metrics=[]))
+            
+            # Tensorboard callback.
+            callback_tb = TensorBoard(log_dir='.\\logs'
+                                           , histogram_freq=1
+                                           , batch_size=self.hps['mini_batch_size']
+                                           , write_graph=True
+                                           , write_images=True
+                                           , update_freq='batch')
+            _callbacks.append(callback_tb)
+            
+            _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
+            callbacks_gen_disc = cbks.configure_callbacks(_callbacks
+                                                          , self.gen_disc
+                                                          , do_validation=do_validation
+                                                          , epochs=self.hps['epochs']
+                                                          , steps_per_epoch=self.hps['batch_step']
+                                                          , samples=self.hps['batch_step']
+                                                          , verbose=1
+                                                          , mode=ModeKeys.TRAIN) 
+
+            aggr_metrics_disc_ext = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
+            aggr_metrics_gen_disc = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
+            
+            # Train.
+            callbacks_disc_ext.model.stop_training = False
+            callbacks_gen_disc.model.stop_training = False  
+            callbacks_disc_ext._call_begin_hook(ModeKeys.TRAIN)
+            callbacks_gen_disc._call_begin_hook(ModeKeys.TRAIN)
+            
+            initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(initial_epoch, ModeKeys.TRAIN) #?                                  
+            
+            for e_i in range(initial_epoch, self.hps['epochs']):
+                if callbacks_disc_ext.model.stop_training or callbacks_gen_disc.model.stop_training:
+                    break
+                
+                self.disc_ext.reset_metrics()
+                self.gen_disc.reset_metrics()
+                    
+                epochs_log_disc_ext = {}
+                epochs_log_gen_disc = {}
+                                                   
+                callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
+
+                for s_i in range(self.hps['batch_step']):
+                    for k_i in range(self.hps['disc_k_step']):
+                        # Build batch logs.
+                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['mini_batch_size']}
+                        callbacks_disc_ext._call_batch_hook(ModeKeys.TRAIN
+                                                            , 'begin'
+                                                            , self.hps['disc_k_step'] * s_i + k_i + 1
+                                                            , k_batch_logs)
+                                                
+                        inputs, outputs = gen_disc_ext_data_fun(output_generator)
+                        outs = self.disc_ext.train_on_batch(inputs
+                                 , outputs
+                                 , class_weight=class_weight
+                                 , reset_metrics=True) #?
+                        del inputs, outputs
+                        outs = to_list(outs) #?
+                        
+                        if s_i == 0:
+                            aggr_metrics_disc_ext.create(outs)
+                        
+                        metrics_names = ['disc_ext_loss'] + [v.name for v in self.disc_ext.loss_functions]                             
+                            
+                        for l, o in zip(metrics_names, outs):
+                            k_batch_logs[l] = o                        
+                                    
+                        callbacks_disc_ext._call_batch_hook(ModeKeys.TRAIN
+                                                            , 'end'
+                                                            , self.hps['disc_k_step'] * s_i + k_i + 1
+                                                            , k_batch_logs)
+                        print('\n', k_batch_logs)
+                        
+                    # Build batch logs.
+                    batch_logs = {'batch': s_i + 1, 'size': self.hps['mini_batch_size']}
+                    callbacks_gen_disc._call_batch_hook(ModeKeys.TRAIN
+                                                        , 'begin'
+                                                        , s_i
+                                                        , batch_logs)
+
+                    inputs, outputs = gen_gen_disc_data_fun(output_generator)
+                    outs = self.gen_disc.train_on_batch(inputs
+                                                        , outputs
+                                                        , class_weight=class_weight
+                                                        , reset_metrics=False)
+                    del inputs, outputs
+                    outs = to_list(outs)
+                    
+                    if s_i == 0:
+                        aggr_metrics_gen_disc.create(outs)
+                    
+                    metrics_names = ['gen_disc_loss'] + [v.name for v in self.gen_disc.loss_functions]
+                    
+                    for l, o in zip(metrics_names, outs): #?
+                        batch_logs[l] = o
+        
+                    callbacks_gen_disc._call_batch_hook(ModeKeys.TRAIN
+                                                        , 'end'
+                                                        , s_i
+                                                        , batch_logs)
+                    print('\n', batch_logs)
+                
+                aggr_metrics_disc_ext.finalize()
+                aggr_metrics_gen_disc.finalize()
+                
+                # Make epochs log.
+                outs_disc_ext = to_list(aggr_metrics_disc_ext.results)
+                for out_label, out in zip(out_labels_disc_ext, outs_disc_ext):
+                    epochs_log_disc_ext[out_label] = out
+                                
+                outs_gen_disc = to_list(aggr_metrics_gen_disc.results)
+                for out_label, out in zip(out_labels_gen_disc, outs_gen_disc):
+                    epochs_log_gen_disc[out_label] = out
+                    
+                # Do validation.
+                if not do_validation: #?
+                    if e_i % validation_freq == 0: #?
+                        # disc_ext.
+                        val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
+                                                                      , val_generator #?
+                                                                      , gen_disc_ext_data_fun
+                                                                      , callbacks=callbacks_disc_ext
+                                                                      , workers=0)
+                        
+                        # gen_disc.
+                        val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
+                                                                      , val_generator
+                                                                      , gen_gen_disc_data_fun
+                                                                      , callbacks=callbacks_gen_disc
+                                                                      , workers=0)                                            
+                        # Make epochs log.
+                        val_outs_disc_ext = to_list(val_outs_disc_ext)
+                        for out_label, val_out in zip(out_labels_disc_ext, val_outs_disc_ext):
+                            epochs_log_disc_ext['val_' + out_label] = val_out
+                                        
+                        val_outs_gen_disc = to_list(val_outs_gen_disc)
+                        for out_label, val_out in zip(out_labels_gen_disc, val_outs_gen_disc):
+                            epochs_log_gen_disc['val_' + out_label] = val_out
+                                                                
+                callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
+                
+                if save_f:
+                    self.save_gan_model()
+                
+                # Save sample images. 
+                res = self.generate(np.random.rand(1, self.map_nn_arch['latent_dim'])
+                                    , np.random.randint(self.map_nn_arch['num_classes'], size=1))
+                sample = res[0]
+                sample = np.squeeze(sample) * 255.
+                sample = sample.astype('uint8')
+                imsave(os.path.join('results', 'sample_' + str(e_i) + '.png'), sample, check_contrast=False)
+                                
+            self.disc_ext._successful_loop_finish = True
+            self.gen_disc._successful_loop_finish = True
+                
+            callbacks_disc_ext._call_end_hook(ModeKeys.TRAIN)
+            callbacks_gen_disc._call_end_hook(ModeKeys.TRAIN) 
+        finally:
+            try:
+                if enq:
+                    enq.stop()
+            finally:
+                if val_enq:
+                    val_enq.stop()
+
+        return self.disc_ext.history, self.gen_disc.history
         
     def generate(self, latents, labels, *args, **kwargs):
         """Generate styled images.
@@ -512,7 +845,7 @@ class StyleGAN(AbstractGAN):
         labels: 2d numpy array
             Labels.
         """ 
-        s_images = super(StyleGAN, self).generate(self, [latents, labels], *args, **kwargs) #?
+        s_images = super(StyleGAN, self).generate([latents, labels], *args, **kwargs) #?
         s_images[0] = (s_images[0] * 0.5 + 0.5) #Label?
         return s_images
 

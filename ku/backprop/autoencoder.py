@@ -4,13 +4,15 @@ from __future__ import print_function
 
 import numpy as np
 
+import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense
-from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.keras import optimizers
 
-def reverse_undirected_model(model):
-    """Reverse the undirected model.
+from tensorflow_core.python.keras.layers.convolutional import Conv
+
+def reverse_model(model):
+    """Reverse a model.
     
     Shared layer, multiple nodes ?
     
@@ -28,50 +30,62 @@ def reverse_undirected_model(model):
     # Check exception.
     # TODO
     
-    # Get all layers and extract input layers and output layers.
+    # Get all layers and extract the input layer and output layer.
     layers = model.layers
-    input_layers = [layer for layer in layers if isinstance(layer, InputLayer) == True]
-    output_layer_names = [t.name.split('/')[0] for t in model.outputs]
-    output_layers = [layer for layer in layers if layer.name in output_layer_names] #?
+    output_layer = layers[-1]
+    input_r = output_layer.output
     
     # Reconstruct the model reversely.
-    outputs = model.outputs
-    input1 = outputs[0]
-    layer = output_layers[0] 
-    output = _reverse_output(layer, input1)
+    output = _get_reversed_outputs(output_layer, input_r)
     
-    return Model(inputs=[input1], outputs=[output])
+    return Model(inputs=output_layer.output, outputs=output)
 
-def _reverse_output(layer, tensor):
-    """Reverse output layers recursively. ?
+def _get_reversed_outputs(output_layer, input_r):
+    """Get reverse outputs recursively. ?
     
     Parameters
     ----------
-    layer: Keras layer
-        Layer instance.
-    tensor: Karas tensor
-        Tensor instance.
+    output_layer: Keras layer.
+        Last layer of a model.
+    input_r: Tensor.
+        Reversed input.
     """
     
     # Check exception.?
-    if isinstance(layer, Dense):
-        tensor = Dense(layer.input_shape[0], activation=layer.activation)(tensor)
-        
-        # Get inbound nodes.
-        i_nodes = layer._inbound_nodes
-        
-        if len(i_nodes) != 0:
-            output = _reverse_output(i_nodes[0], tensor)
-        else:
-            return tensor
-    else:
-        # TODO?
-        pass
+    # TODO
+    output_layer = Dense(1)
     
-    return output
+    in_node = output_layer.inbound_nodes[0]
+    out_layer = in_node.outbound_layer
+    
+    if isinstance(out_layer, Dense):
+        output = Dense(out_layer.input_shape[1]
+                       , activation=out_layer.activation
+                       , use_bias=out_layer.use_bias)(input_r) #?
+        
+        # Get an upper layer.
+        upper_layers = in_node.inbound_layers[0]
+        
+        if len(upper_layers) == 1:
+            upper_layer = upper_layers[0]
+            return _get_reversed_outputs(upper_layer, output)
+        else:
+            return output
+    elif isinstance(out_layer, Conv): #?
+        if Conv.rank == 1:
+            output = Dense(out_layer.input_shape[1], activation=out_layer.activation)(input_r) #?
+            
+            # Get an upper layer.
+            upper_layers = in_node.inbound_layers[0]
+            
+            if len(upper_layers) == 1:
+                upper_layer = upper_layers[0]
+                return _get_reversed_outputs(upper_layer, output)
+            else:
+                return output
 
-def make_ae_from_ugm(model, hps):
-    """Make autoencoder from undirected graphical model.?
+def make_autoencoder(model, hps):
+    """Make autoencoder.
     
     Parameters
     ----------
@@ -88,7 +102,7 @@ def make_ae_from_ugm(model, hps):
     
     # Check exception.?
     # Get a reverse model.
-    r_model = reverse_undirected_model(model)
+    r_model = reverse_model(model)
     
     inputs = model.inputs
     latents = model(inputs)
