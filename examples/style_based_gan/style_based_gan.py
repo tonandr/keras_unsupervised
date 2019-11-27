@@ -90,7 +90,7 @@ class StyleGAN(AbstractGAN):
             self._create_discriminator()
                         
             # Compose.
-            self.compose_gan_with_mode(gan.STYLE_GAN_REGULAR)
+            self.compose_gan_with_mode(gan.STYLE_GAN_SOFTPLUS_INVERSE_R1_GP)
             
             # Compile.
             # Configure optimizers and losses.
@@ -98,7 +98,10 @@ class StyleGAN(AbstractGAN):
                                     , beta_1=self.hps['beta_1']
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
-            loss_conf = gan.get_loss_conf(self.hps, gan.LOSS_CONF_TYPE_REGULAR)
+            loss_conf = gan.get_loss_conf(self.hps
+                                          , gan.LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP
+                                          , model=self.disc_ext
+                                          , input_variable_orders=[0])
             
             self.compile(opt
                          , loss_conf['disc_ext_losses']
@@ -127,7 +130,10 @@ class StyleGAN(AbstractGAN):
                                     , beta_1=self.hps['beta_1']
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
-            loss_conf = gan.get_loss_conf(self.hps, gan.LOSS_CONF_TYPE_REGULAR)
+            loss_conf = gan.get_loss_conf(self.hps
+                                          , gan.LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP
+                                          , model=self.disc_ext
+                                          , input_variable_orders=[0])
             
             self.compile(opt
                          , loss_conf['disc_ext_losses']
@@ -430,7 +436,16 @@ class StyleGAN(AbstractGAN):
             
         z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
         
-        return x_inputs_b + z_inputs_b, x_outputs_b + z_outputs_b        
+        """
+        def get_x3_inputs(x):
+            n = K.random_normal((1, 1, 1))
+            return [n * x[1] + (1. - n) * x[0]]
+        
+        z_outputs = [self.gen(z_inputs_b)] if len(self.gen.outputs) == 1 else self.gen(z_inputs_b)                
+        x3_inputs_b = get_x3_inputs([x_inputs_b[0], z_outputs[0]]) 
+        """
+        
+        return x_inputs_b + z_inputs_b, x_outputs_b + x_outputs_b + z_outputs_b  #?        
         
     def gen_gen_disc_data_fun(self, generator, gen_prog_depth=None, disc_prog_depth=None, *args, **kwargs):
         # Create x, x_tilda.
@@ -639,11 +654,10 @@ class StyleGAN(AbstractGAN):
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='.\\logs'
                                            , histogram_freq=1
-                                           , batch_size=self.hps['mini_batch_size']
                                            , write_graph=True
                                            , write_images=True
                                            , update_freq='batch')
-            _callbacks.append(callback_tb)
+            #_callbacks.append(callback_tb)
                             
             _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
             callbacks_disc_ext = cbks.configure_callbacks(_callbacks
@@ -669,11 +683,10 @@ class StyleGAN(AbstractGAN):
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='.\\logs'
                                            , histogram_freq=1
-                                           , batch_size=self.hps['mini_batch_size']
                                            , write_graph=True
                                            , write_images=True
                                            , update_freq='batch')
-            _callbacks.append(callback_tb)
+            #_callbacks.append(callback_tb)
             
             _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
             callbacks_gen_disc = cbks.configure_callbacks(_callbacks
@@ -813,8 +826,11 @@ class StyleGAN(AbstractGAN):
                     self.save_gan_model()
                 
                 # Save sample images. 
-                res = self.generate(np.random.rand(1, self.map_nn_arch['latent_dim'])
-                                    , np.random.randint(self.map_nn_arch['num_classes'], size=1))
+                input1 = np.random.rand(1, self.map_nn_arch['latent_dim'])
+                input2 = np.random.randint(self.map_nn_arch['num_classes'], size=1)
+                inputs = [input1, input2, input1]
+                
+                res = self.generate(inputs)
                 sample = res[0]
                 sample = np.squeeze(sample) * 255.
                 sample = sample.astype('uint8')
@@ -835,17 +851,15 @@ class StyleGAN(AbstractGAN):
 
         return self.disc_ext.history, self.gen_disc.history
         
-    def generate(self, latents, labels, *args, **kwargs):
+    def generate(self, inputs, *args, **kwargs):
         """Generate styled images.
         
         Parameters
         ----------
-        latents: 2d numpy array
-            latents.
-        labels: 2d numpy array
-            Labels.
+        inputs: List or tuple.
+            Input list.
         """ 
-        s_images = super(StyleGAN, self).generate([latents, labels], *args, **kwargs) #?
+        s_images = super(StyleGAN, self).generate(inputs, *args, **kwargs) #?
         s_images[0] = (s_images[0] * 0.5 + 0.5) #Label?
         return s_images
 

@@ -34,8 +34,7 @@ class CategoricalCrossentropyWithLabelGT(LossFunctionWrapper):
                  , label_smoothing=0
                  , reduction=losses_utils.ReductionV2.AUTO
                  , name='categorical_corssentropy_with_label_gt'):
-        super(CategoricalCrossentropyWithLabelGT, self).__init__(
-            categorical_corssentropy_with_label_gt
+        super(CategoricalCrossentropyWithLabelGT, self).__init__(categorical_corssentropy_with_label_gt
             , name=name
             , reduction=reduction
             , num_classes=num_classes
@@ -67,14 +66,15 @@ class WGANGPLoss(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
                  , name='wgan_gp_loss'
-                 , input_variables=None
+                 , model=None
+                 , input_variable_orders=None
                  , wgan_lambda=10.0
                  , wgan_target=1.0):
-        super(WGANGPLoss, self).__init__(
-            wgan_gp_loss
+        super(WGANGPLoss, self).__init__(wgan_gp_loss
             , name=name
             , reduction=reduction
-            , input_variables=input_variables
+            , model=model
+            , input_variable_orders=input_variable_orders
             , wgan_lambda = wgan_lambda
             , wgan_target = wgan_target)
 
@@ -138,18 +138,19 @@ def wgan_loss(y_true, y_pred):
     return K.mean(y_pred, axis=-1)
 
 def wgan_gp_loss(y_true
-                          , y_pred
-                          , input_variables=None
-                          , wgan_lambda=10.0
-                          , wgan_target=1.0):
-    if input_variables is None:
-        raise ValueError('input_variables must be assigned.')
-    global tape #?
-    assert tf.executing_eagerly() and 'tape' in dir() and isinstance(tape, tf.GradientTape) and tape._persistent
+                , y_pred
+                , model
+                , input_variable_orders=None
+                , wgan_lambda=10.0
+                , wgan_target=1.0):
+    if model is None or model.tape_handler is None or input_variable_orders is None:
+        raise ValueError('model and model.assigned_inputs and model.tape_handler and input_variable_orders must be assigned.')
+    assert tf.executing_eagerly() and isinstance(model.tape_handler, tf.GradientTape) and model.tape_handler._persistent
     
     y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)    
-    grads = tape.gradient(y_pred, input_variables)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    inputs = [model.assigned_inputs[k] for k in input_variable_orders]     
+    grads = model.tape_handler.gradient(y_pred, inputs)
     norm = K.sqrt(K.sum(K.square(grads), axis=[1, 2, 3])) #?
     return (wgan_lambda / (wgan_target ** 2)) * K.square(norm - wgan_target) #?
 

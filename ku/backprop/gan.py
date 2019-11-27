@@ -15,6 +15,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.layers import Lambda
 
 from tensorflow_core.python.keras.utils.generic_utils import to_list, CustomObjectScope
 from tensorflow_core.python.keras.utils.data_utils import iter_sequence_infinite
@@ -62,17 +63,18 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
     elif lc_type == LOSS_CONF_TYPE_WGAN_GP:
         loss_conf = {'disc_ext_losses': [WGANLoss()
                                 , WGANLoss()
-                                , WGANGPLoss(input_variables=kwargs['wgan_gp_input_variables'] #?
-                                                        , wgan_lambda=hps['wgan_lambda']
-                                                        , wgan_target=hps['wgan_target'])]
+                                , WGANGPLoss(model=kwargs['model']
+                                    , input_variable_orders=kwargs['input_variable_orders']
+                                    , wgan_lambda=hps['wgan_lambda']
+                                    , wgan_target=hps['wgan_target'])]
                     , 'disc_ext_loss_weights': [-1.0, 1.0, 1.0]
                     , 'gen_disc_losses': [WGANLoss()]
                     , 'gen_disc_loss_weights': [-1.0]}
     elif lc_type == LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP:
         loss_conf = {'disc_ext_losses': [SoftPlusInverseLoss(name='real_loss')
                                 , RPenaltyLoss(name='r_penalty_loss'
-                                               , model=kwargs['disc_ext']
-                                               , input_variable_orders=[0] 
+                                               , model=kwargs['model']
+                                               , input_variable_orders=kwargs['input_variable_orders'] 
                                                , r_gamma=hps['r_gamma'])
                                 , SoftPlusLoss(name='fake_loss')]
                     , 'disc_ext_loss_weights': [1.0, 1.0, 1.0]
@@ -1117,8 +1119,8 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
         
         disc_ext = ModelExt(inputs=x_inputs + z_inputs
-                                           , outputs=x_outputs + x2_outputs
-                                           , name='disc_ext')
+                            , outputs=x_outputs + x2_outputs
+                            , name='disc_ext')
         if multi_gpu:
             disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
                 
@@ -1134,10 +1136,93 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
 
         gen_disc = ModelExt(inputs=z_inputs
-                                           , outputs=z_p_outputs
-                                           , name='gen_disc')
+                            , outputs=z_p_outputs
+                            , name='gen_disc')
         if multi_gpu:
             gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')
+    elif mode == STYLE_GAN_WGAN_GP:
+        # Compose gan.                    
+        # Compose disc_ext.
+        # disc.
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs]  
+        x_outputs = [disc(x_inputs)] if len(disc.outputs) == 1 else disc(x_inputs) #? 
+        
+        # gen and disc.
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
+               
+        gen.trainable = False
+        for layer in gen.layers: layer.trainable = False
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
+        
+        disc.trainable = True
+        for layer in disc.layers: layer.trainable = True
+        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        
+        x3_inputs = [[tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs][0]]
+        x3_outputs = [disc(x3_inputs + [x_inputs[1]])]
+        
+        disc_ext = ModelExt(inputs=x_inputs + z_inputs + x3_inputs
+                            , outputs=x_outputs + x2_outputs + x3_outputs
+                            , name='disc_ext')
+        if multi_gpu:
+            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
+                
+        # Compose gen_disc.
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
+        
+        gen.trainable = True
+        for layer in gen.layers: layer.trainable = True    
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
+        
+        disc.trainable = False
+        for layer in disc.layers: layer.trainable = False
+        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+
+        gen_disc = ModelExt(inputs=z_inputs
+                            , outputs=z_p_outputs
+                            , name='gen_disc')
+        if multi_gpu:
+            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')
+    elif mode == STYLE_GAN_SOFTPLUS_INVERSE_R1_GP:
+        # Compose gan.                    
+        # Compose disc_ext.
+        # disc.
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs]  
+        x_outputs = [disc(x_inputs)] if len(disc.outputs) == 1 else disc(x_inputs) #? 
+        
+        # gen and disc.
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
+               
+        gen.trainable = False
+        for layer in gen.layers: layer.trainable = False
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
+        
+        disc.trainable = True
+        for layer in disc.layers: layer.trainable = True
+        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+                
+        disc_ext = ModelExt(inputs=x_inputs + z_inputs
+                            , outputs=x_outputs + x_outputs + x2_outputs
+                            , name='disc_ext')
+        if multi_gpu:
+            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
+                
+        # Compose gen_disc.
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
+        
+        gen.trainable = True
+        for layer in gen.layers: layer.trainable = True    
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
+        
+        disc.trainable = False
+        for layer in disc.layers: layer.trainable = False
+        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+
+        gen_disc = ModelExt(inputs=z_inputs
+                            , outputs=z_p_outputs
+                            , name='gen_disc')
+        if multi_gpu:
+            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')    
     elif mode == PIX2PIX_GAN:
         # Compose gan.                    
         # Compose disc_ext.
@@ -1163,8 +1248,8 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
             if len(disc.outputs) == 1 else disc(image_inputs + z_outputs)
         
         disc_ext = ModelExt(inputs=x_inputs + z_inputs + image_inputs
-                                           , outputs=x_outputs + x2_outputs
-                                           , name='disc_ext')
+                            , outputs=x_outputs + x2_outputs
+                            , name='disc_ext')
         if multi_gpu:
             disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') 
                 
@@ -1186,8 +1271,8 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
             if len(disc.outputs) == 1 else disc(image_inputs + z_outputs)
 
         gen_disc = ModelExt(inputs=z_inputs + image_inputs
-                                           , outputs=z_p_outputs + z_outputs 
-                                           , name='gen_disc')
+                            , outputs=z_p_outputs + z_outputs 
+                            , name='gen_disc')
         if multi_gpu:
             gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus)
     else:

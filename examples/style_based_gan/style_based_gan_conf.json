@@ -1,6 +1,6 @@
 {
 	"mode" : "train",
-	"raw_data_path" : "/test/home/ubuntu/keras_unsupervised/examples/style_based_gan/resource/thumbnails128x128",
+	"raw_data_path" : "/home/ubuntu/pre_home/home/ubuntu/keras_unsupervised/examples/style_based_gan/resource/thumbnails128x128",
 	"model_loading" : false,
 	"multi_gpu" : false,
 	"num_gpus" : 4,
@@ -11,33 +11,40 @@
 		"beta_2" : 0.99,
 		"decay" : 0.0,
 		"epochs" : 30,
-		"batch_step" : 256,
+		"batch_step" : 1024,
 		"disc_k_step" : 1,
-		"mini_batch_size" : 128,
+		"mini_batch_size" : 64,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
 		"trunc_momentum" : 0.99,
 		"r_gamma": 10.0,
 		"ch_base" : 1024,
-		"max_ch" : 64 
+		"max_ch" : 64,
+		"wgan_lambda": 10.0,
+		"wgan_target": 1.0 
 	},
 	"nn_arch" : {
 		"label_usage" : true,
-		"resolution" : 64
+		"resolution" : 64,
+		"num_classes" : 70000
 	},
+	"gen_hps" : {
+	},	
+	"gen_nn_arch" : {
+	},	
 	"map_hps" : {
 	},	
 	"map_nn_arch" : {
-		"latent_dim" : 32,
-		"dense1_dim" : 32,
+		"latent_dim" : 64,
+		"dense1_dim" : 64,
 		"num_classes" : 70000,
-		"dlatent_dim" : 32,
+		"dlatent_dim" : 64,
 		"num_layers" : 8
 	},		
 	"disc_hps" : {
 	},	
 	"disc_nn_arch" : {
-		"dropout_rate": 0.4
+		"dropout_rate": 0.1
 	}
 }
