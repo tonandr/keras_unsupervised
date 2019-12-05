@@ -11,9 +11,9 @@
 		"beta_2" : 0.99,
 		"decay" : 0.0,
 		"epochs" : 30,
-		"batch_step" : 128,
+		"batch_step" : 256,
 		"disc_k_step" : 2,
-		"mini_batch_size" : 16,
+		"batch_size" : 128,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
@@ -36,10 +36,10 @@
 	"map_hps" : {
 	},	
 	"map_nn_arch" : {
-		"latent_dim" : 32,
-		"dense1_dim" : 32,
+		"latent_dim" : 64,
+		"dense1_dim" : 64,
 		"num_classes" : 70000,
-		"dlatent_dim" : 32,
+		"dlatent_dim" : 64,
 		"num_layers" : 8
 	},		
 	"disc_hps" : {

@@ -11,7 +11,7 @@ import numpy as np
 
 import tensorflow as tf
 import tensorflow_core.python.keras.backend as K 
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.keras.callbacks import TensorBoard
@@ -33,6 +33,7 @@ STYLE_GAN_REGULAR = 0
 STYLE_GAN_WGAN_GP = 1
 STYLE_GAN_SOFTPLUS_INVERSE_R1_GP = 2
 PIX2PIX_GAN = 3
+CYCLE_GAN = 4
 
 # Loss configuration type.
 LOSS_CONF_TYPE_REGULAR = 0
@@ -192,11 +193,24 @@ class AbstractGAN(ABC):
         # Check exception.
         assert hasattr(self, 'disc_ext') and hasattr(self, 'gen_disc')
 
+        self.gen.trainable = False
+        for layer in self.gen.layers: layer.trainable = False
+        
+        self.disc.trainable = True
+        for layer in self.disc.layers: layer.trainable = True
+
         self.disc_ext.compile(optimizer=disc_ext_opt
                          , loss=disc_ext_losses
                          , loss_weights=disc_ext_loss_weights
                          , metrics=disc_ext_metrics
                          , run_eagerly=True)
+        
+        self.gen.trainable = True
+        for layer in self.gen.layers: layer.trainable = True
+        
+        self.disc.trainable = False
+        for layer in self.disc.layers: layer.trainable = False        
+        
         self.gen_disc.compile(optimizer=gen_disc_opt
                          , loss=gen_disc_losses
                          , loss_weights=gen_disc_loss_weights
@@ -363,9 +377,7 @@ class AbstractGAN(ABC):
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='.\\logs'
                                            , histogram_freq=1
-                                           , batch_size=self.hps['mini_batch_size']
                                            , write_graph=True
-                                           , write_grads=True
                                            , write_images=True
                                            , update_freq='batch')
             _callbacks.append(callback_tb)
@@ -394,9 +406,7 @@ class AbstractGAN(ABC):
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='.\\logs'
                                            , histogram_freq=1
-                                           , batch_size=self.hps['mini_batch_size']
                                            , write_graph=True
-                                           , write_grads=True
                                            , write_images=True
                                            , update_freq='batch')
             _callbacks.append(callback_tb)
@@ -438,7 +448,7 @@ class AbstractGAN(ABC):
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
                         # Build batch logs.
-                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['mini_batch_size']}
+                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['batch_size']}
                         callbacks_disc_ext._call_batch_hook(ModeKeys.TRAIN
                                                             , 'begin'
                                                             , self.hps['disc_k_step'] * s_i + k_i + 1
@@ -467,7 +477,7 @@ class AbstractGAN(ABC):
                         print('\n', k_batch_logs)
                         
                     # Build batch logs.
-                    batch_logs = {'batch': s_i + 1, 'size': self.hps['mini_batch_size']}
+                    batch_logs = {'batch': s_i + 1, 'size': self.hps['batch_size']}
                     callbacks_gen_disc._call_batch_hook(ModeKeys.TRAIN
                                                         , 'begin'
                                                         , s_i
@@ -674,9 +684,7 @@ class AbstractGAN(ABC):
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='.\\logs'
                                            , histogram_freq=1
-                                           , batch_size=self.hps['mini_batch_size']
                                            , write_graph=True
-                                           , write_grads=True
                                            , write_images=True
                                            , update_freq='batch')
             _callbacks.append(callback_tb)
@@ -705,9 +713,7 @@ class AbstractGAN(ABC):
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='.\\logs'
                                            , histogram_freq=1
-                                           , batch_size=self.hps['mini_batch_size']
                                            , write_graph=True
-                                           , write_grads=True
                                            , write_images=True
                                            , update_freq='batch')
             _callbacks.append(callback_tb)
@@ -763,7 +769,7 @@ class AbstractGAN(ABC):
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
                         # Build batch logs.
-                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['mini_batch_size']}
+                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['batch_size']}
                         callbacks_disc_ext._call_batch_hook(ModeKeys.TRAIN
                                                             , 'begin'
                                                             , self.hps['disc_k_step'] * s_i + k_i + 1
@@ -794,7 +800,7 @@ class AbstractGAN(ABC):
                         print('\n', k_batch_logs)
                         
                     # Build batch logs.
-                    batch_logs = {'batch': s_i + 1, 'size': self.hps['mini_batch_size']}
+                    batch_logs = {'batch': s_i + 1, 'size': self.hps['batch_size']}
                     callbacks_gen_disc._call_batch_hook(ModeKeys.TRAIN
                                                         , 'begin'
                                                         , s_i
@@ -938,7 +944,7 @@ class AbstractGAN(ABC):
 
         for k_i in range(self.hps['batch_step']):
             # Build batch logs.
-            k_batch_logs = {'batch': self.hps['batch_step'] * k_i + 1, 'size': self.hps['mini_batch_size']}
+            k_batch_logs = {'batch': self.hps['batch_step'] * k_i + 1, 'size': self.hps['batch_size']}
             callbacks._call_batch_hook(ModeKeys.TEST
                                                 , 'begin'
                                                 , self.hps['batch_step'] * k_i + 1
@@ -1035,7 +1041,7 @@ class AbstractGAN(ABC):
 
         for s_i in range(self.hps['batch_step']):                
             # Build batch logs.
-            batch_logs = {'batch': s_i + 1, 'size': self.hps['mini_batch_size']}
+            batch_logs = {'batch': s_i + 1, 'size': self.hps['batch_size']}
             callbacks._call_batch_hook(ModeKeys.TEST
                                                 , 'begin'
                                                 , s_i
@@ -1098,7 +1104,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
     mode: Integer.
         GAN composing mode.
     """
-    assert isinstance(gen, ModelExt) and isinstance(disc, ModelExt)
+    assert isinstance(gen, (Model, ModelExt)) and isinstance(disc, (Model, ModelExt))
             
     if mode == STYLE_GAN_REGULAR:
         # Compose gan.                    
@@ -1275,6 +1281,9 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
                             , name='gen_disc')
         if multi_gpu:
             gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus)
+    elif mode == CYCLE_GAN:
+        # TODO
+        pass
     else:
         ValueError('mode is not valid.')
     

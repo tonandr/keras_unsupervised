@@ -725,13 +725,20 @@ class StyleGAN(AbstractGAN):
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
                         # Build batch logs.
-                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['mini_batch_size']}
+                        k_batch_logs = {'batch': self.hps['disc_k_step'] * s_i + k_i + 1, 'size': self.hps['batch_size']}
                         callbacks_disc_ext._call_batch_hook(ModeKeys.TRAIN
                                                             , 'begin'
                                                             , self.hps['disc_k_step'] * s_i + k_i + 1
                                                             , k_batch_logs)
                                                 
                         inputs, outputs = gen_disc_ext_data_fun(output_generator)
+                        
+                        self.gen.trainable = False
+                        for layer in self.gen.layers: layer.trainable = False
+                        
+                        self.disc.trainable = True
+                        for layer in self.disc.layers: layer.trainable = True
+                        
                         outs = self.disc_ext.train_on_batch(inputs
                                  , outputs
                                  , class_weight=class_weight
@@ -754,13 +761,20 @@ class StyleGAN(AbstractGAN):
                         print('\n', k_batch_logs)
                         
                     # Build batch logs.
-                    batch_logs = {'batch': s_i + 1, 'size': self.hps['mini_batch_size']}
+                    batch_logs = {'batch': s_i + 1, 'size': self.hps['batch_size']}
                     callbacks_gen_disc._call_batch_hook(ModeKeys.TRAIN
                                                         , 'begin'
                                                         , s_i
                                                         , batch_logs)
 
                     inputs, outputs = gen_gen_disc_data_fun(output_generator)
+                    
+                    self.gen.trainable = True
+                    for layer in self.gen.layers: layer.trainable = True
+                    
+                    self.disc.trainable = False
+                    for layer in self.disc.layers: layer.trainable = False
+                    
                     outs = self.gen_disc.train_on_batch(inputs
                                                         , outputs
                                                         , class_weight=class_weight
@@ -893,7 +907,7 @@ class StyleGAN(AbstractGAN):
 
                 self.total_samples = len(self.sample_paths)
                 
-                self.batch_size = self.hps['mini_batch_size']
+                self.batch_size = self.hps['batch_size']
                 self.hps['tr_step'] = self.total_samples // self.batch_size
                 
                 if self.total_samples % self.batch_size != 0:
@@ -906,7 +920,7 @@ class StyleGAN(AbstractGAN):
                 
                 self.total_samples = len(self.sample_paths)
             
-                self.batch_size = self.hps['mini_batch_size']
+                self.batch_size = self.hps['batch_size']
                 self.hps['val_step'] = self.total_samples // self.batch_size
                 
                 if self.total_samples % self.batch_size != 0:
@@ -999,7 +1013,7 @@ class StyleGAN(AbstractGAN):
             self.db = self.db.iloc[:, 1:]
             self.total_samples = self.db.shape[0]
             
-            self.batch_size = self.hps['mini_batch_size']
+            self.batch_size = self.hps['batch_size']
             self.hps['step'] = self.total_samples // self.batch_size
             
             if self.total_samples % self.batch_size != 0:

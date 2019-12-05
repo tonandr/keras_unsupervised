@@ -13,7 +13,7 @@
 		"epochs" : 30,
 		"batch_step" : 1024,
 		"disc_k_step" : 1,
-		"mini_batch_size" : 64,
+		"batch_size" : 64,
 		"mixing_prob" : 0.9,
 		"trunc_psi" : 0.0,
 		"trunc_cutoff" : 8,
