@@ -110,9 +110,11 @@ class AbstractGAN(ABC):
             self.custom_objects['ModelExt'] = ModelExt                                                          
             with CustomObjectScope(self.custom_objects):
                 # disc_ext.
+                '''
                 self.disc_ext = load_model(self.DISC_EXT_PATH
                                            , custom_objects=self.custom_objects
                                            , compile=False) #?
+                '''
                  
                 # gen_disc.
                 self.gen_disc = load_model(self.GEN_DISC_PATH
@@ -124,10 +126,11 @@ class AbstractGAN(ABC):
                 self.disc = self.gen_disc.get_layer('disc')
                 
                 if conf['multi_gpu']: #?
+                    """
                     self.disc_ext = multi_gpu_model(self.disc_ext
                                                     , gpus=self.conf['num_gpus']
                                                     , name='disc_ext')
-                    """
+                    
                     self.disc_ext.compile(optimizer=self.disc_ext.optimizer
                                           , loss=self.disc_ext.losses
                                           , loss_weights=self.disc_ext.loss_weights
@@ -147,6 +150,8 @@ class AbstractGAN(ABC):
                     self.gen = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'], name='gen') #?
                     self.disc = multi_gpu_model(self.disc, gpus=self.conf['num_gpus'], name='disc') #?
 
+            
+            
             #self._is_gan_compiled = True        
     
     @property
@@ -375,7 +380,7 @@ class AbstractGAN(ABC):
                                                      , stateful_metrics=[]))
                 
             # Tensorboard callback.
-            callback_tb = TensorBoard(log_dir='.\\logs'
+            callback_tb = TensorBoard(log_dir='logs'
                                            , histogram_freq=1
                                            , write_graph=True
                                            , write_images=True
@@ -404,7 +409,7 @@ class AbstractGAN(ABC):
                                                      , stateful_metrics=[]))
             
             # Tensorboard callback.
-            callback_tb = TensorBoard(log_dir='.\\logs'
+            callback_tb = TensorBoard(log_dir='logs'
                                            , histogram_freq=1
                                            , write_graph=True
                                            , write_images=True
@@ -1246,14 +1251,14 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc.trainable = True
         for layer in disc.layers: layer.trainable = True
         
-        # Get image inputs.
-        image_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs \
-                         if 'image' in t.name]        
+        # Get condition inputs.
+        cond_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs \
+                         if 'cond' in t.name]        
                         
-        x2_outputs = [disc(image_inputs + z_outputs)] \
-            if len(disc.outputs) == 1 else disc(image_inputs + z_outputs)
+        x2_outputs = [disc(cond_inputs + z_outputs)] \
+            if len(disc.outputs) == 1 else disc(cond_inputs + z_outputs)
         
-        disc_ext = ModelExt(inputs=x_inputs + z_inputs + image_inputs
+        disc_ext = ModelExt(inputs=x_inputs + z_inputs + cond_inputs
                             , outputs=x_outputs + x2_outputs
                             , name='disc_ext')
         if multi_gpu:
@@ -1269,14 +1274,14 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc.trainable = False
         for layer in disc.layers: layer.trainable = False
 
-        # Get image inputs.
-        image_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs \
-                        if 'image' in t.name]
+        # Get condition inputs.
+        cond_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs \
+                        if 'cond' in t.name]
          
-        z_p_outputs = [disc(image_inputs + z_outputs)] \
-            if len(disc.outputs) == 1 else disc(image_inputs + z_outputs)
+        z_p_outputs = [disc(cond_inputs + z_outputs)] \
+            if len(disc.outputs) == 1 else disc(cond_inputs + z_outputs)
 
-        gen_disc = ModelExt(inputs=z_inputs + image_inputs
+        gen_disc = ModelExt(inputs=z_inputs + cond_inputs
                             , outputs=z_p_outputs + z_outputs 
                             , name='gen_disc')
         if multi_gpu:
