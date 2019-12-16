@@ -75,18 +75,15 @@ def _get_reversed_outputs(output_layer, input_r):
     elif isinstance(out_layer, (Conv1D, SeparableConv1D)): #?
         # TODO
         pass
-    elif isinstance(out_layer, (Conv2D, SeparableConv2D)):
-        '''
-        output = Conv2DTranspose(out_layer.input_shape[-1]
+    elif isinstance(out_layer, (Conv2D, SeparableConv2D)):        
+        if out_layer.strides == (2, 2):
+            output = Conv2DTranspose(out_layer.input_shape[-1]
                                      , out_layer.kernel_size
                                      , strides=out_layer.strides
                                      , padding='same' #?
                                      , activation=out_layer.activation
                                      , use_bias=out_layer.use_bias)(input_r) #?
-        '''
-        
-        if out_layer.strides == (2, 2):
-            output = UpSampling2D()(input_r)
+            #output = UpSampling2D()(input_r)
         else:
             output = Conv2D(out_layer.input_shape[-1]
                                      , out_layer.kernel_size

@@ -274,35 +274,43 @@ class AbstractGAN(ABC):
         
         Parameters
         ----------
-        generator: Generator
+        generator: Generator.
             Training data generator.
-        verbose: Integer 
+        gen_disc_ext_data_fun: Function.
+            Data generating function for disc_ext.
+        gen_gen_disc_data_fun: Function.
+            Data generating function for gen_disc.
+        verbose: Integer. 
             Verbose mode (default=1).
-        callback_disc_ext: list
+        callback_disc_ext: list.
             disc_ext callbacks (default=None).
-        callback_gen_disc: list
+        callback_gen_disc: list.
             gen_disc callbacks (default=None).
-        validation_data_gen: Generator or Sequence
+        validation_data_gen: Generator or Sequence.
             Validation generator or sequence (default=None).
-        validation_steps: Integer
+        validation_steps: Integer.
             Validation steps (default=None).
-        validation_freq: Integer
+        validation_freq: Integer.
             Validation frequency (default=1).
-        max_queue_size: Integer
+        class_weight: Numpy array. ?
+            Class weight (default=None).
+        max_queue_size: Integer.
             Maximum size for the generator queue (default: 10).
-        workers: Integer
+        workers: Integer.
             Maximum number of processes to get samples (default: 1, 0: main thread).
-        use_multiprocessing: Boolean
+        use_multiprocessing: Boolean.
             Multi-processing flag (default: False).
-        shuffle: Boolean
+        shuffle: Boolean.
             Batch shuffling flag (default: True).
-        initial_epoch: Integer
+        initial_epoch: Integer.
             Initial epoch (default: 0).
+        save_f: Boolean.
+            Model saving flag (default: True).
         
         Returns
         -------
         Training history.
-            tuple
+            Tuple.
         """
         
         # Check exception.
@@ -369,15 +377,16 @@ class AbstractGAN(ABC):
                  
             # Callbacks.            
             # disc_ext.
-            #out_labels_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
+            out_labels_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
             out_labels_disc_ext = ['loss'] + [v.name for v in self.disc_ext.loss_functions]
-            callback_metrics_disc_ext = out_labels_disc_ext \
-                + ['val_' + out_label for out_label in out_labels_disc_ext]
-            self.disc_ext.history = cbks.History()
-            _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
+            #self.disc_ext.history = cbks.History()
+            _callbacks = [] #cbks.BaseLogger(stateful_metrics=[])]
+            
+            '''
             if verbose:
                 _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
                                                      , stateful_metrics=[]))
+            '''
                 
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='logs'
@@ -385,28 +394,32 @@ class AbstractGAN(ABC):
                                            , write_graph=True
                                            , write_images=True
                                            , update_freq='batch')
-            _callbacks.append(callback_tb)
+            #_callbacks.append(callback_tb) #?
                             
-            _callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
+            #_callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
             callbacks_disc_ext = cbks.configure_callbacks(_callbacks
                                                           , self.disc_ext
                                                           , do_validation=do_validation
                                                           , epochs=self.hps['epochs']
                                                           , steps_per_epoch=self.hps['batch_step'] * self.hps['disc_k_step']
                                                           , samples=self.hps['batch_step'] * self.hps['disc_k_step']
-                                                          , verbose=1
-                                                          , mode=ModeKeys.TRAIN)  
+                                                          , verbose=0
+                                                          , mode=ModeKeys.TRAIN)
+            progbar_disc_ext = training_utils.get_progbar(self.disc_ext, 'steps')
+            progbar_disc_ext.params = callbacks_disc_ext.params
+            progbar_disc_ext.params['verbose'] = verbose  
           
             # gen_disc.
-            #out_labels_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
+            out_labels_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
             out_labels_gen_disc = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
-            callback_metrics_gen_disc = out_labels_gen_disc \
-                + ['val_' + out_label for out_label in out_labels_gen_disc]
-            self.gen_disc.history = cbks.History()
-            _callbacks = [cbks.BaseLogger(stateful_metrics=[])]
+            #self.gen_disc.history = cbks.History()
+            _callbacks = [] #cbks.BaseLogger(stateful_metrics=[])]
+            
+            '''
             if verbose:
                 _callbacks.append(cbks.ProgbarLogger(count_mode='steps'
                                                      , stateful_metrics=[]))
+            '''
             
             # Tensorboard callback.
             callback_tb = TensorBoard(log_dir='logs'
@@ -414,41 +427,49 @@ class AbstractGAN(ABC):
                                            , write_graph=True
                                            , write_images=True
                                            , update_freq='batch')
-            _callbacks.append(callback_tb)
+            #_callbacks.append(callback_tb)
             
-            _callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
+            #_callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
             callbacks_gen_disc = cbks.configure_callbacks(_callbacks
                                                           , self.gen_disc
                                                           , do_validation=do_validation
                                                           , epochs=self.hps['epochs']
                                                           , steps_per_epoch=self.hps['batch_step']
                                                           , samples=self.hps['batch_step']
-                                                          , verbose=1
-                                                          , mode=ModeKeys.TRAIN) 
-
-            aggr_metrics_disc_ext = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
-            aggr_metrics_gen_disc = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
+                                                          , verbose=0
+                                                          , mode=ModeKeys.TRAIN)
+            progbar_gen_disc = training_utils.get_progbar(self.gen_disc, 'steps')
+            progbar_gen_disc.params = callbacks_gen_disc.params
+            progbar_gen_disc.params['verbose'] = verbose  
             
             # Train.
             callbacks_disc_ext.model.stop_training = False
             callbacks_gen_disc.model.stop_training = False  
             callbacks_disc_ext._call_begin_hook(ModeKeys.TRAIN)
             callbacks_gen_disc._call_begin_hook(ModeKeys.TRAIN)
-            
+            progbar_disc_ext.on_train_begin()
+            progbar_gen_disc.on_train_begin()
+                        
             initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(initial_epoch, ModeKeys.TRAIN) #?                                  
             
+            pre_e_i = -1
             for e_i in range(initial_epoch, self.hps['epochs']):
+                aggr_outputs_disc_ext = training_utils.MetricsAggregator(True, steps=(self.hps['batch_step'] * self.hps['disc_k_step']))
+                aggr_outputs_gen_disc = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
+                                
                 if callbacks_disc_ext.model.stop_training or callbacks_gen_disc.model.stop_training:
                     break
                 
-                self.disc_ext.reset_metrics()
-                self.gen_disc.reset_metrics()
+                self.disc_ext.reset_metrics() #?
+                self.gen_disc.reset_metrics() 
                     
                 epochs_log_disc_ext = {}
                 epochs_log_gen_disc = {}
                                                    
                 callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
                 callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
+                progbar_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
+                progbar_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
 
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
@@ -458,8 +479,16 @@ class AbstractGAN(ABC):
                                                             , 'begin'
                                                             , self.hps['disc_k_step'] * s_i + k_i + 1
                                                             , k_batch_logs)
+                        progbar_disc_ext.on_batch_begin(self.hps['disc_k_step'] * s_i + k_i + 1, k_batch_logs)
                                                 
                         inputs, outputs = gen_disc_ext_data_fun(output_generator)
+                        
+                        self.gen.trainable = False
+                        for layer in self.gen.layers: layer.trainable = False
+                        
+                        self.disc.trainable = True
+                        for layer in self.disc.layers: layer.trainable = True
+                        
                         outs = self.disc_ext.train_on_batch(inputs
                                  , outputs
                                  , class_weight=class_weight
@@ -467,18 +496,25 @@ class AbstractGAN(ABC):
                         del inputs, outputs
                         outs = to_list(outs) #?
                         
-                        if s_i == 0:
-                            aggr_metrics_disc_ext.create(outs)
+                        outs_p = [np.asarray([v]) for v in outs]
+                        
+                        if pre_e_i != e_i and s_i == 0 and k_i == 0:
+                            aggr_outputs_disc_ext.create(outs_p)
+                        else:
+                            aggr_outputs_disc_ext.aggregate(outs_p)
                         
                         metrics_names = ['disc_ext_loss'] + [v.name for v in self.disc_ext.loss_functions]                             
                             
-                        for l, o in zip(metrics_names, outs):
-                            k_batch_logs[l] = o                        
-                                    
+                        #for l, o in zip(metrics_names, outs):
+                        #    k_batch_logs[l] = o                        
+                        k_batch_logs = cbks.make_logs(self.disc_ext, k_batch_logs, outs_p, ModeKeys.TRAIN)
+                        
                         callbacks_disc_ext._call_batch_hook(ModeKeys.TRAIN
                                                             , 'end'
                                                             , self.hps['disc_k_step'] * s_i + k_i + 1
                                                             , k_batch_logs)
+                        
+                        progbar_disc_ext.on_batch_end( self.hps['disc_k_step'] * s_i + k_i + 1, k_batch_logs)
                         print('\n', k_batch_logs)
                         
                     # Build batch logs.
@@ -487,77 +523,115 @@ class AbstractGAN(ABC):
                                                         , 'begin'
                                                         , s_i
                                                         , batch_logs)
+                    progbar_gen_disc.on_batch_begin(s_i, batch_logs)
 
                     inputs, outputs = gen_gen_disc_data_fun(output_generator)
+                    
+                    self.gen.trainable = True
+                    for layer in self.gen.layers: layer.trainable = True
+                    
+                    self.disc.trainable = False
+                    for layer in self.disc.layers: layer.trainable = False
+                    
                     outs = self.gen_disc.train_on_batch(inputs
                                                         , outputs
                                                         , class_weight=class_weight
                                                         , reset_metrics=False)
                     del inputs, outputs
                     outs = to_list(outs)
+                    outs_p = [np.asarray([v]) for v in outs]
                     
-                    if s_i == 0:
-                        aggr_metrics_gen_disc.create(outs)
+                    if pre_e_i != e_i and s_i == 0:
+                        aggr_outputs_gen_disc.create(outs_p)
+                    else:
+                        aggr_outputs_gen_disc.aggregate(outs_p)
                     
                     metrics_names = ['gen_disc_loss'] + [v.name for v in self.gen_disc.loss_functions]
                     
-                    for l, o in zip(metrics_names, outs): #?
-                        batch_logs[l] = o
+                    #for l, o in zip(metrics_names, outs): #?
+                    #    batch_logs[l] = o
+                    batch_logs = cbks.make_logs(self.gen_disc, batch_logs, outs_p, ModeKeys.TRAIN)
         
                     callbacks_gen_disc._call_batch_hook(ModeKeys.TRAIN
                                                         , 'end'
                                                         , s_i
                                                         , batch_logs)
+                    
+                    progbar_gen_disc.on_batch_end(s_i, batch_logs)
                     print('\n', batch_logs)
                 
-                aggr_metrics_disc_ext.finalize()
-                aggr_metrics_gen_disc.finalize()
+                aggr_outputs_disc_ext.finalize()
+                aggr_outputs_gen_disc.finalize()
                 
                 # Make epochs log.
-                outs_disc_ext = to_list(aggr_metrics_disc_ext.results)
-                for out_label, out in zip(out_labels_disc_ext, outs_disc_ext):
-                    epochs_log_disc_ext[out_label] = out
-                                
-                outs_gen_disc = to_list(aggr_metrics_gen_disc.results)
-                for out_label, out in zip(out_labels_gen_disc, outs_gen_disc):
-                    epochs_log_gen_disc[out_label] = out
+                outs_disc_ext = to_list(aggr_outputs_disc_ext.results)
+                #for out_label, out in zip(out_labels_disc_ext, outs_disc_ext):
+                #    epochs_log_disc_ext[out_label] = out
+                epochs_log_disc_ext = cbks.make_logs(self.disc_ext
+                                                     , epochs_log_disc_ext
+                                                     , outs_disc_ext
+                                                     , ModeKeys.TRAIN)
+                
+                outs_gen_disc = to_list(aggr_outputs_gen_disc.results)
+                #for out_label, out in zip(out_labels_gen_disc, outs_gen_disc):
+                #    epochs_log_gen_disc[out_label] = out
+                epochs_log_gen_disc = cbks.make_logs(self.gen_disc
+                                                     , epochs_log_gen_disc
+                                                     , outs_gen_disc 
+                                                     , ModeKeys.TRAIN)
                     
                 # Do validation.
-                if not do_validation: #?
+                if do_validation: #?
                     if e_i % validation_freq == 0: #?
                         # disc_ext.
                         val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
                                                                       , val_generator #?
                                                                       , gen_disc_ext_data_fun
-                                                                      , callbacks=callbacks_disc_ext
-                                                                      , workers=0)
+                                                                      , callbacks=None #callbacks_disc_ext
+                                                                      , workers=0
+                                                                      , verbose=0)
                         
                         # gen_disc.
                         val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
                                                                       , val_generator
                                                                       , gen_gen_disc_data_fun
-                                                                      , callbacks=callbacks_gen_disc
-                                                                      , workers=0)                                            
+                                                                      , callbacks=None #callbacks_gen_disc
+                                                                      , workers=0
+                                                                      , verbose=0)                                            
                         # Make epochs log.
                         val_outs_disc_ext = to_list(val_outs_disc_ext)
-                        for out_label, val_out in zip(out_labels_disc_ext, val_outs_disc_ext):
-                            epochs_log_disc_ext['val_' + out_label] = val_out
+                        #for out_label, val_out in zip(out_labels_disc_ext, val_outs_disc_ext):
+                        #    epochs_log_disc_ext['val_' + out_label] = val_out
+                        epochs_log_disc_ext = cbks.make_logs(self.disc_ext
+                                                     , epochs_log_disc_ext
+                                                     , val_outs_disc_ext
+                                                     , ModeKeys.TRAIN
+                                                     , prefix='val_')
                                         
                         val_outs_gen_disc = to_list(val_outs_gen_disc)
-                        for out_label, val_out in zip(out_labels_gen_disc, val_outs_gen_disc):
-                            epochs_log_gen_disc['val_' + out_label] = val_out
+                        #for out_label, val_out in zip(out_labels_gen_disc, val_outs_gen_disc):
+                        #    epochs_log_gen_disc['val_' + out_label] = val_out
+                        epochs_log_gen_disc = cbks.make_logs(self.gen_disc
+                                                     , epochs_log_gen_disc
+                                                     , val_outs_gen_disc
+                                                     , ModeKeys.TRAIN
+                                                     , prefix='val_')
                                                                 
                 callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
                 callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
+                progbar_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
+                progbar_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
                 
                 if save_f:
                     self.save_gan_model()
                                 
+                pre_e_i = e_i
+                                
             self.disc_ext._successful_loop_finish = True
             self.gen_disc._successful_loop_finish = True
                 
-            callbacks_disc_ext._call_end_hook(ModeKeys.TRAIN)
-            callbacks_gen_disc._call_end_hook(ModeKeys.TRAIN) 
+            callbacks_disc_ext._call_end_hook(ModeKeys.TRAIN) # progress bar?
+            callbacks_gen_disc._call_end_hook(ModeKeys.TRAIN) #
         finally:
             try:
                 if enq:
@@ -921,8 +995,8 @@ class AbstractGAN(ABC):
             Callbacks (default=None).
         max_queue_size: Integer
             Maximum size for the generator queue (default: 10).
-        class_weight: TODO. 
-            TODO.
+        class_weight: Numpy array. ?
+            Class weight.
         workers: Integer
             Maximum number of processes to get samples (default: 1, 0: main thread).
         use_multiprocessing: Boolean
@@ -931,7 +1005,7 @@ class AbstractGAN(ABC):
         Returns
         -------
         Training history.
-            tuple.
+            Tuple.
         """
 
         # Check exception.                    
@@ -941,11 +1015,27 @@ class AbstractGAN(ABC):
         out_labels = ['loss'] + [v.name for v in disc_ext.loss_functions] #?                                                   
         aggr_metrics = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
         
+        # Callbacks.
+        callbacks = cbks.configure_callbacks(callbacks #?
+                                            , disc_ext
+                                            , do_validation=False
+                                            , epochs=1
+                                            , steps_per_epoch=self.hps['batch_step']
+                                            , samples=self.hps['batch_step']
+                                            , verbose=0
+                                            , mode=ModeKeys.TEST)
+        progbar = training_utils.get_progbar(disc_ext, 'steps')
+        progbar.params = callbacks.params
+        progbar.params['verbose'] = verbose
+        
         # Evaluate.
         callbacks._call_begin_hook(ModeKeys.TEST)
+        progbar.on_train_begin()
+        
         disc_ext.reset_metrics()
         epochs_log= {}      
         callbacks.on_epoch_begin(0, epochs_log)
+        progbar.on_epoch_begin(0, epochs_log)
 
         for k_i in range(self.hps['batch_step']):
             # Build batch logs.
@@ -954,46 +1044,50 @@ class AbstractGAN(ABC):
                                                 , 'begin'
                                                 , self.hps['batch_step'] * k_i + 1
                                                 , k_batch_logs)
+            progbar.on_batch_begin(self.hps['batch_step'] * k_i + 1, k_batch_logs)
             
             inputs, outputs = gen_disc_ext_data_func(generator)
             outs = disc_ext.test_on_batch(inputs, outputs, reset_metrics=False) #?  
             del inputs, outputs
             outs = to_list(outs) #?
+            outs_p = [np.asarray([v]) for v in outs]
             
             if k_i == 0:
-                aggr_metrics.create(outs)
+                aggr_metrics.create(outs_p)
+            else:
+                aggr_metrics.aggregate(outs_p)
             
             metrics_names = ['loss'] + [v.name for v in disc_ext.loss_functions]                            
                 
-            for l, o in zip(metrics_names, outs):
-                k_batch_logs[l] = o                        
-
-            ws = self.gen.get_weights()
-            res = []
-            for w in ws:
-                res.append(np.isfinite(w).all())
-            res = np.asarray(res)
+            #for l, o in zip(metrics_names, outs):
+            #    k_batch_logs[l] = o
+            k_batch_logs = cbks.make_logs(disc_ext, k_batch_logs, outs_p, ModeKeys.TEST)                        
             
             callbacks._call_batch_hook(ModeKeys.TEST
                                                 , 'end'
                                                 , self.hps['batch_step'] * k_i + 1
                                                 , k_batch_logs)
-            print('\n', k_batch_logs)
+            progbar.on_batch_end(self.hps['batch_step'] * k_i + 1, k_batch_logs)
+            #print('\n', k_batch_logs)
                             
         aggr_metrics.finalize()
         
-        # Make epochs log.
+        # Make epochs log. ?
         outs = to_list(aggr_metrics.results)
-        for out_label, out in zip(out_labels, outs):
-            epochs_log[out_label] = out
+        #for out_label, out in zip(out_labels, outs):
+        #    epochs_log[out_label] = out
+        epochs_log = cbks.make_logs(disc_ext
+                                    , epochs_log
+                                    , outs
+                                    , ModeKeys.TEST)
                                                                       
         callbacks.on_epoch_end(0, epochs_log)
+        progbar.on_epoch_end(0, epochs_log)
                     
         disc_ext._successful_loop_finish = True
-            
         callbacks._call_end_hook(ModeKeys.TEST)
 
-        return aggr_metrics.results
+        return to_list(aggr_metrics.results)
     
     def _evaluate_gen_disc(self
                       , gen_disc
@@ -1018,8 +1112,8 @@ class AbstractGAN(ABC):
             Callbacks (default=None).
         max_queue_size: Integer
             Maximum size for the generator queue (default: 10).
-        class_weight: TODO. 
-            TODO.
+        class_weight: Numpy array. ?
+            Class weight.
         workers: Integer
             Maximum number of processes to get samples (default: 1, 0: main thread).
         use_multiprocessing: Boolean
@@ -1028,7 +1122,7 @@ class AbstractGAN(ABC):
         Returns
         -------
         Training history.
-            tuple.
+            Tuple.
         """
 
         # Check exception.                    
@@ -1037,12 +1131,28 @@ class AbstractGAN(ABC):
         
         out_labels = ['loss'] + [v.name for v in gen_disc.loss_functions] #?                                                   
         aggr_metrics = training_utils.MetricsAggregator(True, steps=self.hps['batch_step'])
+
+        # Callbacks.
+        callbacks = cbks.configure_callbacks(callbacks #?
+                                            , gen_disc
+                                            , do_validation=False
+                                            , epochs=1
+                                            , steps_per_epoch=self.hps['batch_step']
+                                            , samples=self.hps['batch_step']
+                                            , verbose=0
+                                            , mode=ModeKeys.TEST)
+        progbar = training_utils.get_progbar(gen_disc, 'steps')
+        progbar.params = callbacks.params
+        progbar.params['verbose'] = verbose
         
         # Evaluate.
         callbacks._call_begin_hook(ModeKeys.TEST)
+        progbar.on_train_begin()
+        
         gen_disc.reset_metrics()
         epochs_log= {}      
         callbacks.on_epoch_begin(0, epochs_log)
+        progbar.on_epoch_begin(0, epochs_log)
 
         for s_i in range(self.hps['batch_step']):                
             # Build batch logs.
@@ -1051,40 +1161,50 @@ class AbstractGAN(ABC):
                                                 , 'begin'
                                                 , s_i
                                                 , batch_logs)
+            progbar.on_batch_begin(self.hps['batch_step'] * s_i + 1, batch_logs)
 
             inputs, outputs = gen_gen_disc_data_func(generator)
             outs = gen_disc.test_on_batch(inputs, outputs, reset_metrics=False) #?  
             del inputs, outputs
             outs = to_list(outs)
+            outs_p = [np.asarray([v]) for v in outs]
             
             if s_i == 0:
-                aggr_metrics.create(outs)
+                aggr_metrics.create(outs_p)
+            else:
+                aggr_metrics.aggregate(outs_p)
             
             metrics_names = ['loss'] + [v.name for v in gen_disc.loss_functions]
             
-            for l, o in zip(metrics_names, outs): #?
-                batch_logs[l] = o
+            #for l, o in zip(metrics_names, outs): #?
+            #    batch_logs[l] = o
+            batch_logs = cbks.make_logs(gen_disc, batch_logs, outs_p, ModeKeys.TEST) 
 
             callbacks._call_batch_hook(ModeKeys.TEST
                                                 , 'end'
                                                 , s_i
                                                 , batch_logs)
-            print('\n', batch_logs)
+            #print('\n', batch_logs)
+            progbar.on_batch_end(self.hps['batch_step'] * s_i + 1, batch_logs)
         
         aggr_metrics.finalize()
         
-        # Make epochs log.
+        # Make epochs log. ?
         outs = to_list(aggr_metrics.results)
-        for out_label, out in zip(out_labels, outs):
-            epochs_log[out_label] = out
+        #for out_label, out in zip(out_labels, outs):
+        #    epochs_log[out_label] = out
+        epochs_log = cbks.make_logs(gen_disc
+                                    , epochs_log
+                                    , outs
+                                    , ModeKeys.TEST)
 
         callbacks.on_epoch_end(0, epochs_log)
+        progbar.on_epoch_end(0, epochs_log)
                            
         gen_disc._successful_loop_finish = True
-            
         callbacks._call_end_hook(ModeKeys.TEST)
 
-        return aggr_metrics.results
+        return to_list(aggr_metrics.results)
         
     def generate(self, inputs, *args, **kwargs):
         """Generate.
