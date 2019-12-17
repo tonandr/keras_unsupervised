@@ -136,6 +136,9 @@ class StyleGAN(AbstractGAN):
                     , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True, name='r_fake')]
                     , 'gen_disc_loss_weights': [1.0]}
             
+            # Compose.
+            self.compose_gan_with_mode(gan.STYLE_GAN_REGULAR)
+            
             self.compile(opt
                          , loss_conf['disc_ext_losses']
                          , loss_conf['disc_ext_loss_weights']
@@ -186,13 +189,16 @@ class StyleGAN(AbstractGAN):
         
         dlatents2 = self.map(inputs2)
         
-        #dlatents = Lambda(lambda x: x[0])([dlatents1, dlatents2])
+        dlatents = Lambda(lambda x: x[0])([dlatents1, dlatents2])
+        
+        '''
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
         
         # Truncation trick.
         dlatents = TruncationTrick(psi=self.hps['trunc_psi']
                  , cutoff=self.hps['trunc_cutoff']
                  , momentum=self.hps['trunc_momentum'])(dlatents)
+        '''
 
         # Design the model according to the final image resolution.                
         # The first constant input layer.
@@ -263,7 +269,7 @@ class StyleGAN(AbstractGAN):
         output1 = EqualizedLRConv2D(3
                         , 1
                         , strides=1
-                        , activation='linear' #'tanh'
+                        , activation='tanh' #?
                         , padding='same')(x)
 
         if self.nn_arch['label_usage']:
@@ -510,7 +516,7 @@ class StyleGAN(AbstractGAN):
         self.fit_generator(generator_tr
                         , self.gen_disc_ext_data_fun
                         , self.gen_gen_disc_data_fun
-                        , validation_data_gen=generator_val
+                        , validation_data_gen=None #generator_val
                         , max_queue_size=128
                         , workers=0
                         , use_multiprocessing=False
@@ -668,7 +674,7 @@ class StyleGAN(AbstractGAN):
                                            , write_graph=True
                                            , write_images=True
                                            , update_freq='batch')
-            #_callbacks.append(callback_tb) #?
+            _callbacks.append(callback_tb) #?
                             
             #_callbacks += (callbacks_disc_ext or []) + [self.disc_ext.history]
             callbacks_disc_ext = cbks.configure_callbacks(_callbacks
@@ -701,7 +707,7 @@ class StyleGAN(AbstractGAN):
                                            , write_graph=True
                                            , write_images=True
                                            , update_freq='batch')
-            #_callbacks.append(callback_tb)
+            _callbacks.append(callback_tb)
             
             #_callbacks += (callbacks_gen_disc or []) + [self.gen_disc.history]
             callbacks_gen_disc = cbks.configure_callbacks(_callbacks
@@ -900,9 +906,10 @@ class StyleGAN(AbstractGAN):
                     self.save_gan_model()
                 
                 # Save sample images. 
-                input1 = np.random.rand(1, self.map_nn_arch['latent_dim'])
-                input2 = np.random.randint(self.map_nn_arch['num_classes'], size=1)
-                inputs = [input1, input2, input1]
+                input1 = np.random.normal(size=(1, self.map_nn_arch['latent_dim']))
+                input2 = np.asarray([1024])
+                input3 = np.random.normal(size=(1, self.map_nn_arch['latent_dim']))
+                inputs = [input1, input2, input3]
                 
                 res = self.generate(inputs)
                 sample = res[0]
@@ -926,6 +933,29 @@ class StyleGAN(AbstractGAN):
                     val_enq.stop()
 
         return self.disc_ext.history, self.gen_disc.history
+    
+    def evaluate(self):
+        """Evaluate."""
+        
+        # Initialize the results directory
+        if not os.path.isdir(os.path.join('results')):
+            os.mkdir(os.path.join('results'))
+        else:
+            shutil.rmtree(os.path.join('results'))
+            os.mkdir(os.path.join('results'))
+        
+        # Save sample images. 
+        for label_index in range(self.map_nn_arch['num_classes']):
+            input1 = np.random.normal(size=(1, self.map_nn_arch['latent_dim']))
+            input2 = np.asarray([label_index])
+            input3 = np.random.normal(size=(1, self.map_nn_arch['latent_dim']))
+            inputs = [input1, input2, input3]
+            
+            res = self.generate(inputs)
+            sample = res[0]
+            sample = np.squeeze(sample) * 255.
+            sample = sample.astype('uint8')
+            imsave(os.path.join('results', 'sample_' + str(label_index) + '.png'), sample, check_contrast=False)        
         
     def generate(self, inputs, *args, **kwargs):
         """Generate styled images.
@@ -1148,12 +1178,14 @@ def main():
         
         print('Elasped time: {0:f}s'.format(te-ts))
     if conf['mode'] == 'evaluate':
-        # Initialize the results directory
-        if not os.path.isdir(os.path.join('results')):
-            os.mkdir(os.path.join('results'))
-        else:
-            shutil.rmtree(os.path.join('results'))
-            os.mkdir(os.path.join('results'))
+        # Evaluate.
+        s_gan = StyleGAN(conf)
+        
+        ts = time.time()
+        s_gan.evaluate()
+        te = time.time()
+        
+        print('Elasped time: {0:f}s'.format(te-ts))        
                
 if __name__ == '__main__':    
     main()               

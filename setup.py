@@ -13,7 +13,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='keras-unsupervised',  # Required
-    version='1.0.16.dev1',  # Required
+    version='1.0.17.dev1',  # Required
     description='Keras based unsupervised learning framework.',  # Optional
     long_description=long_description,  # Optional
     long_description_content_type='text/markdown',  # Optional (see note above)
@@ -73,6 +73,7 @@ setup(
     install_requires=['tensorflow-probability==0.7.0'
                       , 'pandas==0.25.1'
                       , 'scikit-image==0.15.0'
+                      , 'matplotlib==3.1.0'
                       , 'opencv-contrib-python==4.1.1.26'],  # Optional
 
     # Specify which Python versions you support. In contrast to the

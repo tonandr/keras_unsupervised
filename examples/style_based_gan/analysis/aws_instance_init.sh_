@@ -1,0 +1,37 @@
+#!/usr/bin/env bash 
+#source activate tensorflow_p36
+conda update -y -n base -c defaults conda
+conda uninstall -y pip
+conda install -y pip
+#pip uninstall -y tensorflow
+pip uninstall -y tensorflow-gpu
+conda install -y tensorflow-gpu
+#conda install -y cudnn
+git clone https://github.com/tonandr/keras_unsupervised.git
+cd keras_unsupervised
+python setup.py sdist bdist_wheel
+pip install -e ./
+
+#sudo apt install dos2unix
+#sudo apt install -y xemacs21
+#dos2unix aws_instance_init.sh
+#chmod 774 aws_instance_init.sh
+#sudo apt install -y s3fs
+#cd .. 
+#echo "XXX:XXX" > .passwd-s3fs
+#chmod 600 .passwd-s3fs
+#cd deeplabv3plus_keras/
+#cd src/space
+
+#mkdir resource_raw
+#s3fs jangsik ./resource_raw -o umask=00
+#ln -s ./resource_raw/deeplabv3plus_keras/resource ./
+#mkdir resource
+#cp -r ./resource_raw/deeplabv3plus_keras/resource/pascal-voc-2012 ~/deeplabv3plus_keras/resource
+
+#scp -r -i d:\Users\gutom\bodhi_virginia.pem style_based_gan.py ubuntu@174.129.62.70:/home/ubuntu/keras_unsupervised/examples/style_based_gan
+#scp -r -i d:\Users\gutom\bodhi_virginia.pem d:\topcoder\keras_unsupervised\examples\style_based_gan\resource.zip ubuntu@174.129.62.70:/home/ubuntu/inpainting
+#scp -r -i d:\Users\gutom\bodhi_virginia.pem inpainting.py ubuntu@174.129.62.70:/home/ubuntu/pre_home/home/ubuntu/inpainting/bodhi/inpainting
+#scp -r -i d:\Users\gutom\bodhi_virginia.pem d:\topcoder\keras_unsupervised\examples\style_based_gan\analysis\aws_instance_init.sh_ ubuntu@174.129.62.70:/home/ubuntu/aws_instance_init.sh
+#scp -r -i d:\Users\gutom\bodhi_virginia.pem ubuntu@174.129.62.70:/home/ubuntu/pre_home/home/ubuntu/inpainting/resource/results ..\..\analysis
+#scp -r -i d:\Users\gutom\bodhi_virginia.pem d:\topcoder\keras_unsupervised\ku\backprop\autoencoder.py ubuntu@174.129.62.70:/home/ubuntu/pre_home/home/ubuntu/keras_unsupervised/ku/backprop
