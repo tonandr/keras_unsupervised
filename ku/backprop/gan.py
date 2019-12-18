@@ -16,7 +16,7 @@ from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.layers import Lambda
-from tensorflow.keras.losses import BinaryCrossentropy
+from tensorflow.keras.losses import BinaryCrossentropy, MeanSquaredError
 
 from tensorflow_core.python.keras.utils.generic_utils import to_list, CustomObjectScope
 from tensorflow_core.python.keras.utils.data_utils import iter_sequence_infinite
@@ -41,6 +41,7 @@ CYCLE_GAN = 5
 LOSS_CONF_TYPE_REGULAR = 0
 LOSS_CONF_TYPE_WGAN_GP = 1
 LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP = 2
+LOSS_CONF_TYPE_LS = 3
 
 def get_loss_conf(hps, lc_type, *args, **kwargs):
     """Get the GAN loss configuration.
@@ -59,9 +60,9 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
     """
     loss_conf = {}
     if lc_type == LOSS_CONF_TYPE_REGULAR:
-        loss_conf = {'disc_ext_losses': [BinaryCrossentropy(from_logits=True, name='real'), BinaryCrossentropy(from_logits=True, name='fake')]
+        loss_conf = {'disc_ext_losses': [BinaryCrossentropy(from_logits=True), BinaryCrossentropy(from_logits=True)]
                     , 'disc_ext_loss_weights': [1.0, 1.0]
-                    , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True, name='r_fake')]
+                    , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True)]
                     , 'gen_disc_loss_weights': [1.0]}
     elif lc_type == LOSS_CONF_TYPE_WGAN_GP:
         loss_conf = {'disc_ext_losses': [WGANLoss()
@@ -82,6 +83,11 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
                                 , SoftPlusLoss(name='fake_loss')]
                     , 'disc_ext_loss_weights': [1.0, 1.0, 1.0]
                     , 'gen_disc_losses': [SoftPlusInverseLoss()]
+                    , 'gen_disc_loss_weights': [1.0]}
+    elif lc_type == LOSS_CONF_TYPE_LS:
+        loss_conf = {'disc_ext_losses': [MeanSquaredError(), MeanSquaredError()]
+                    , 'disc_ext_loss_weights': [1.0, 1.0]
+                    , 'gen_disc_losses': [MeanSquaredError()]
                     , 'gen_disc_loss_weights': [1.0]}
     else:
         raise ValueError('type is not valid.')
