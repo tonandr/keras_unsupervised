@@ -1233,7 +1233,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
     """
     assert isinstance(gen, (Model, ModelExt)) and isinstance(disc, (Model, ModelExt))
             
-    if mode == STYLE_GAN_REGULAR:
+    if mode == STYLE_GAN_REGULAR or mode == LSGAN:
         # Compose gan.                    
         # Compose disc_ext.
         # disc.
@@ -1355,47 +1355,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
                             , outputs=z_p_outputs
                             , name='gen_disc')
         if multi_gpu:
-            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')
-    elif mode == LSGAN:
-        # Compose gan.                    
-        # Compose disc_ext.
-        # disc.
-        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs]  
-        x_outputs = [disc(x_inputs)] if len(disc.outputs) == 1 else disc(x_inputs) #? 
-        
-        # gen and disc.
-        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
-               
-        gen.trainable = False
-        for layer in gen.layers: layer.trainable = False
-        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
-        
-        disc.trainable = True
-        for layer in disc.layers: layer.trainable = True
-        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
-        
-        disc_ext = ModelExt(inputs=x_inputs + z_inputs
-                            , outputs=x_outputs + x2_outputs
-                            , name='disc_ext')
-        if multi_gpu:
-            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
-                
-        # Compose gen_disc.
-        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
-        
-        gen.trainable = True
-        for layer in gen.layers: layer.trainable = True    
-        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
-        
-        disc.trainable = False
-        for layer in disc.layers: layer.trainable = False
-        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
-
-        gen_disc = ModelExt(inputs=z_inputs
-                            , outputs=z_p_outputs
-                            , name='gen_disc')
-        if multi_gpu:
-            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')    
+            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')   
     elif mode == PIX2PIX_GAN:
         # Compose gan.                    
         # Compose disc_ext.
