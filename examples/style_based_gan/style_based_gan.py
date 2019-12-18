@@ -31,7 +31,6 @@ from tensorflow.keras.utils import plot_model
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras import optimizers
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
-from tensorflow.keras.losses import BinaryCrossentropy
 
 from tensorflow_core.python.keras.utils.generic_utils import to_list, CustomObjectScope
 from tensorflow_core.python.keras.utils.data_utils import iter_sequence_infinite
@@ -47,6 +46,7 @@ from ku.layer_ext import FusedEqualizedLRConv2DTranspose, BlurDepthwiseConv2D, F
 from ku.layer_ext import MinibatchStddevConcat
 from ku.image_utils import resize_image
 import ku.backprop.gan as gan
+from tensorflow_core.python.keras.losses import MeanSquaredError
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -91,7 +91,7 @@ class StyleGAN(AbstractGAN):
             self._create_discriminator()
                         
             # Compose.
-            self.compose_gan_with_mode(gan.STYLE_GAN_REGULAR)
+            self.compose_gan_with_mode(gan.STYLE_GAN_SOFTPLUS_INVERSE_R1_GP) #?
             
             # Compile.
             # Configure optimizers and losses.
@@ -99,10 +99,10 @@ class StyleGAN(AbstractGAN):
                                     , beta_1=self.hps['beta_1']
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
-            loss_conf = {'disc_ext_losses': [BinaryCrossentropy(from_logits=True, name='real'), BinaryCrossentropy(from_logits=True, name='fake')]
-                    , 'disc_ext_loss_weights': [1.0, 1.0]
-                    , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True, name='r_fake')]
-                    , 'gen_disc_loss_weights': [1.0]}
+            loss_conf = gan.get_loss_conf(self.hps
+                                          , gan.LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP
+                                          , model=self.disc_ext
+                                          , input_variable_orders=[0])
             
             self.compile(opt
                          , loss_conf['disc_ext_losses']
@@ -125,19 +125,19 @@ class StyleGAN(AbstractGAN):
         super(StyleGAN, self).__init__(conf) #?
         
         if self.conf['model_loading']:
+            # Compose.
+            self.compose_gan_with_mode(gan.STYLE_GAN_SOFTPLUS_INVERSE_R1_GP) #?
+            
             # Compile.
             # Configure optimizers and losses.
             opt = optimizers.Adam(lr=self.hps['lr']
                                     , beta_1=self.hps['beta_1']
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
-            loss_conf = {'disc_ext_losses': [BinaryCrossentropy(from_logits=True, name='real'), BinaryCrossentropy(from_logits=True, name='fake')]
-                    , 'disc_ext_loss_weights': [1.0, 1.0]
-                    , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True, name='r_fake')]
-                    , 'gen_disc_loss_weights': [1.0]}
-            
-            # Compose.
-            self.compose_gan_with_mode(gan.STYLE_GAN_REGULAR)
+            loss_conf = gan.get_loss_conf(self.hps
+                                          , gan.LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP
+                                          , model=self.disc_ext
+                                          , input_variable_orders=[0])
             
             self.compile(opt
                          , loss_conf['disc_ext_losses']
@@ -191,14 +191,12 @@ class StyleGAN(AbstractGAN):
         
         dlatents = Lambda(lambda x: x[0])([dlatents1, dlatents2])
         
-        '''
         dlatents = StyleMixingRegularization(mixing_prob=self.hps['mixing_prob'])([dlatents1, dlatents2])
         
         # Truncation trick.
         dlatents = TruncationTrick(psi=self.hps['trunc_psi']
                  , cutoff=self.hps['trunc_cutoff']
                  , momentum=self.hps['trunc_momentum'])(dlatents)
-        '''
 
         # Design the model according to the final image resolution.                
         # The first constant input layer.
@@ -269,7 +267,7 @@ class StyleGAN(AbstractGAN):
         output1 = EqualizedLRConv2D(3
                         , 1
                         , strides=1
-                        , activation='tanh' #?
+                        , activation='linear' #'tanh' #?
                         , padding='same')(x)
 
         if self.nn_arch['label_usage']:
@@ -406,10 +404,12 @@ class StyleGAN(AbstractGAN):
         if self.nn_arch['label_usage']:
             x = Lambda(lambda x: K.sum(x[0] * K.cast(x[1], dtype=np.float32), axis=1, keepdims=True))([x, labels]) #?
             output = Activation('linear')(x)
+            #output = Activation('sigmoid')(x)
             self.disc = ModelExt(inputs=[images, labels], outputs=[output], name='disc')
         else:
             x = Lambda(lambda x: K.sum(x, axis=1, keepdims=True))(x)
             output = Activation('linear')(x)
+            #output = Activation('sigmoid')(x)
             self.disc = ModelExt(inputs=[images], outputs=[output], name='disc')
     
     def gen_disc_ext_data_fun(self, generator, gen_prog_depth=None, disc_prog_depth=None, *args, **kwargs):
@@ -443,17 +443,17 @@ class StyleGAN(AbstractGAN):
             
         z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
         
-        """
+        '''
         def get_x3_inputs(x):
             n = K.random_normal((1, 1, 1))
             return [n * x[1] + (1. - n) * x[0]]
         
         z_outputs = [self.gen(z_inputs_b)] if len(self.gen.outputs) == 1 else self.gen(z_inputs_b)                
         x3_inputs_b = get_x3_inputs([x_inputs_b[0], z_outputs[0]]) 
-        """
+        '''
         
-        #return x_inputs_b + z_inputs_b, x_outputs_b + x_outputs_b + z_outputs_b  #?
-        return x_inputs_b + z_inputs_b, x_outputs_b + z_outputs_b  #?         
+        return x_inputs_b + z_inputs_b, x_outputs_b + x_outputs_b + z_outputs_b  #?
+        #return x_inputs_b + z_inputs_b, x_outputs_b + z_outputs_b  #?         
         
     def gen_gen_disc_data_fun(self, generator, gen_prog_depth=None, disc_prog_depth=None, *args, **kwargs):
         # Create x, x_tilda.
@@ -518,7 +518,7 @@ class StyleGAN(AbstractGAN):
                         , self.gen_gen_disc_data_fun
                         , validation_data_gen=None #generator_val
                         , max_queue_size=128
-                        , workers=0
+                        , workers=4
                         , use_multiprocessing=False
                         , shuffle=True) #?
                 
@@ -946,6 +946,7 @@ class StyleGAN(AbstractGAN):
         
         # Save sample images. 
         for label_index in range(self.map_nn_arch['num_classes']):
+            print(label_index)
             input1 = np.random.normal(size=(1, self.map_nn_arch['latent_dim']))
             input2 = np.asarray([label_index])
             input3 = np.random.normal(size=(1, self.map_nn_arch['latent_dim']))
@@ -1048,7 +1049,7 @@ class StyleGAN(AbstractGAN):
                 if index == (step - 1):
                     for bi in range(index * self.batch_size, self.total_samples):
                         image = imread(self.sample_paths[bi])                    
-                        image = 2.0 * (image - 0.5)
+                        image = 2.0 * (image / 255. - 0.5)
                         image = resize_image(image, self.res)
                         
                         images.append(image)
@@ -1060,7 +1061,7 @@ class StyleGAN(AbstractGAN):
                 else:
                     for bi in range(index * self.batch_size, (index + 1) * self.batch_size):
                         image = imread(self.sample_paths[bi])                    
-                        image = 2.0 * (image - 0.5)
+                        image = 2.0 * (image / 255. - 0.5)
                         image = resize_image(image, self.res)
                         
                         images.append(image)

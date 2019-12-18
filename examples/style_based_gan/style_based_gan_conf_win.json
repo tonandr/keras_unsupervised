@@ -1,5 +1,5 @@
 {
-	"mode" : "evaluate",
+	"mode" : "train",
 	"raw_data_path" : "D:\\topcoder\\keras_unsupervised\\examples\\style_based_gan\\resource\\thumbnails128x128",
 	"model_loading" : true,
 	"multi_gpu" : false,

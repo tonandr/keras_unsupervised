@@ -16,6 +16,7 @@ from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.layers import Lambda
+from tensorflow.keras.losses import BinaryCrossentropy
 
 from tensorflow_core.python.keras.utils.generic_utils import to_list, CustomObjectScope
 from tensorflow_core.python.keras.utils.data_utils import iter_sequence_infinite
@@ -32,8 +33,9 @@ from ..loss_ext import SoftPlusInverseLoss, SoftPlusLoss, RPenaltyLoss
 STYLE_GAN_REGULAR = 0
 STYLE_GAN_WGAN_GP = 1
 STYLE_GAN_SOFTPLUS_INVERSE_R1_GP = 2
-PIX2PIX_GAN = 3
-CYCLE_GAN = 4
+LSGAN = 3
+PIX2PIX_GAN = 4
+CYCLE_GAN = 5
 
 # Loss configuration type.
 LOSS_CONF_TYPE_REGULAR = 0
@@ -57,10 +59,10 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
     """
     loss_conf = {}
     if lc_type == LOSS_CONF_TYPE_REGULAR:
-        loss_conf = {'disc_ext_losses': [GANLogLoss(), GANLogLoss()]
-                    , 'disc_ext_loss_weights': [-1.0, 1.0]
-                    , 'gen_disc_losses': [GANLogLoss()]
-                    , 'gen_disc_loss_weights': [-1.0]}
+        loss_conf = {'disc_ext_losses': [BinaryCrossentropy(from_logits=True, name='real'), BinaryCrossentropy(from_logits=True, name='fake')]
+                    , 'disc_ext_loss_weights': [1.0, 1.0]
+                    , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True, name='r_fake')]
+                    , 'gen_disc_loss_weights': [1.0]}
     elif lc_type == LOSS_CONF_TYPE_WGAN_GP:
         loss_conf = {'disc_ext_losses': [WGANLoss()
                                 , WGANLoss()
@@ -1334,6 +1336,46 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
                 
         disc_ext = ModelExt(inputs=x_inputs + z_inputs
                             , outputs=x_outputs + x_outputs + x2_outputs
+                            , name='disc_ext')
+        if multi_gpu:
+            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
+                
+        # Compose gen_disc.
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
+        
+        gen.trainable = True
+        for layer in gen.layers: layer.trainable = True    
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
+        
+        disc.trainable = False
+        for layer in disc.layers: layer.trainable = False
+        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+
+        gen_disc = ModelExt(inputs=z_inputs
+                            , outputs=z_p_outputs
+                            , name='gen_disc')
+        if multi_gpu:
+            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')
+    elif mode == LSGAN:
+        # Compose gan.                    
+        # Compose disc_ext.
+        # disc.
+        x_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs]  
+        x_outputs = [disc(x_inputs)] if len(disc.outputs) == 1 else disc(x_inputs) #? 
+        
+        # gen and disc.
+        z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
+               
+        gen.trainable = False
+        for layer in gen.layers: layer.trainable = False
+        z_outputs = [gen(z_inputs)] if len(gen.outputs) == 1 else gen(z_inputs)
+        
+        disc.trainable = True
+        for layer in disc.layers: layer.trainable = True
+        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        
+        disc_ext = ModelExt(inputs=x_inputs + z_inputs
+                            , outputs=x_outputs + x2_outputs
                             , name='disc_ext')
         if multi_gpu:
             disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
