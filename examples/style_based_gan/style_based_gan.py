@@ -46,7 +46,6 @@ from ku.layer_ext import FusedEqualizedLRConv2DTranspose, BlurDepthwiseConv2D, F
 from ku.layer_ext import MinibatchStddevConcat
 from ku.image_utils import resize_image
 import ku.backprop.gan as gan
-from tensorflow_core.python.keras.losses import MeanSquaredError
 
 #os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 #os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
@@ -100,7 +99,7 @@ class StyleGAN(AbstractGAN):
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
             loss_conf = gan.get_loss_conf(self.hps
-                                          , gan.LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP
+                                          , gan.LOSS_CONF_TYPE_NON_SATURATION_SOFTPLUS_R1_GP
                                           , model=self.disc_ext
                                           , input_variable_orders=[0])
             
@@ -135,7 +134,7 @@ class StyleGAN(AbstractGAN):
                                     , beta_2=self.hps['beta_2']
                                     , decay=self.hps['decay'])
             loss_conf = gan.get_loss_conf(self.hps
-                                          , gan.LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP
+                                          , gan.LOSS_CONF_TYPE_NON_SATURATION_SOFTPLUS_R1_GP
                                           , model=self.disc_ext
                                           , input_variable_orders=[0])
             
@@ -1034,7 +1033,7 @@ class StyleGAN(AbstractGAN):
                 idxes = np.random.choice(self.total_samples, size=self.batch_size)
                 for bi in idxes:
                     image = imread(self.sample_paths[bi])                    
-                    image = 2.0 * (image - 0.5)
+                    image = 2.0 * (image / 255. - 0.5)
                     image = resize_image(image, self.res)
                     
                     images.append(image)
@@ -1127,7 +1126,7 @@ class StyleGAN(AbstractGAN):
                     image = imread(os.path.join(self.raw_data_path
                                                      , 'subject_faces'
                                                      , self.db.loc[bi, 'face_file']))                    
-                    image = 2.0 * (image / 255 - 0.5)
+                    image = 2.0 * (image / 255. - 0.5)
                     image = resize_image(image, self.res)
                     
                     images.append(image)
@@ -1139,7 +1138,7 @@ class StyleGAN(AbstractGAN):
                         image = imread(os.path.join(self.raw_data_path
                                                          , 'subject_faces'
                                                          , self.db.loc[bi, 'face_file']))
-                        image = 2.0 * (image / 255 - 0.5)
+                        image = 2.0 * (image / 255. - 0.5)
                         image = resize_image(image, self.res)
                         
                         images.append(image)
@@ -1149,7 +1148,7 @@ class StyleGAN(AbstractGAN):
                         image = imread(os.path.join(self.raw_data_path
                                                          , 'subject_faces'
                                                          , self.db.loc[bi, 'face_file']))
-                        image = 2.0 * (image / 255 - 0.5)
+                        image = 2.0 * (image / 255. - 0.5)
                         image = resize_image(image, self.res)
                         
                         images.append(image)

@@ -38,9 +38,9 @@ PIX2PIX_GAN = 4
 CYCLE_GAN = 5
 
 # Loss configuration type.
-LOSS_CONF_TYPE_REGULAR = 0
+LOSS_CONF_TYPE_NON_SATURATION_REGULAR = 0
 LOSS_CONF_TYPE_WGAN_GP = 1
-LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP = 2
+LOSS_CONF_TYPE_NON_SATURATION_SOFTPLUS_R1_GP = 2
 LOSS_CONF_TYPE_LS = 3
 
 def get_loss_conf(hps, lc_type, *args, **kwargs):
@@ -59,11 +59,11 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
             Dict.
     """
     loss_conf = {}
-    if lc_type == LOSS_CONF_TYPE_REGULAR:
+    if lc_type == LOSS_CONF_TYPE_NON_SATURATION_REGULAR:
         loss_conf = {'disc_ext_losses': [BinaryCrossentropy(from_logits=True), BinaryCrossentropy(from_logits=True)]
                     , 'disc_ext_loss_weights': [1.0, 1.0]
                     , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True)]
-                    , 'gen_disc_loss_weights': [1.0]}
+                    , 'gen_disc_loss_weights': [-1.0]}
     elif lc_type == LOSS_CONF_TYPE_WGAN_GP:
         loss_conf = {'disc_ext_losses': [WGANLoss()
                                 , WGANLoss()
@@ -74,13 +74,12 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
                     , 'disc_ext_loss_weights': [-1.0, 1.0, 1.0]
                     , 'gen_disc_losses': [WGANLoss()]
                     , 'gen_disc_loss_weights': [-1.0]}
-    elif lc_type == LOSS_CONF_TYPE_SOFTPLUS_INVERSE_R1_GP:
-        loss_conf = {'disc_ext_losses': [SoftPlusInverseLoss(name='real_loss')
-                                , RPenaltyLoss(name='r_penalty_loss'
-                                               , model=kwargs['model']
+    elif lc_type == LOSS_CONF_TYPE_NON_SATURATION_SOFTPLUS_R1_GP :
+        loss_conf = {'disc_ext_losses': [SoftPlusInverseLoss()
+                                , RPenaltyLoss(model=kwargs['model']
                                                , input_variable_orders=kwargs['input_variable_orders'] 
                                                , r_gamma=hps['r_gamma'])
-                                , SoftPlusLoss(name='fake_loss')]
+                                , SoftPlusLoss()]
                     , 'disc_ext_loss_weights': [1.0, 1.0, 1.0]
                     , 'gen_disc_losses': [SoftPlusInverseLoss()]
                     , 'gen_disc_loss_weights': [1.0]}

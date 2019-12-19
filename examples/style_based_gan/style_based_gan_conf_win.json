@@ -1,7 +1,7 @@
 {
 	"mode" : "train",
-	"raw_data_path" : "D:\\topcoder\\keras_unsupervised\\examples\\style_based_gan\\resource\\thumbnails128x128",
-	"model_loading" : true,
+	"raw_data_path" : "D:\\workspace\\keras_unsupervised\\examples\\style_based_gan\\resource\\thumbnails128x128",
+	"model_loading" : false,
 	"multi_gpu" : false,
 	"num_gpus" : 4,
 	"gan_mode": 2,
@@ -11,7 +11,7 @@
 		"beta_2" : 0.99,
 		"decay" : 0.0,
 		"epochs" : 12,
-		"batch_step" : 256,
+		"batch_step" : 64,
 		"disc_k_step" : 2,
 		"batch_size" : 12,
 		"mixing_prob" : 0.9,

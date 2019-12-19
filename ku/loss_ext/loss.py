@@ -41,20 +41,6 @@ class CategoricalCrossentropyWithLabelGT(LossFunctionWrapper):
             , from_logits=from_logits
             , label_smoothing=label_smoothing) 
 
-class GANLogLoss(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gan_los_loss'):
-        super(GANLogLoss, self).__init__(
-            gan_log_loss, name=name, reduction=reduction)
-
-class GANLogInverseLoss(LossFunctionWrapper):
-    def __init__(self
-                 , reduction=losses_utils.ReductionV2.AUTO
-                 , name='gan_log_inverse_loss'):
-        super(GANLogInverseLoss, self).__init__(
-            gan_log_inverse_loss, name=name, reduction=reduction)
-
 class WGANLoss(LossFunctionWrapper):
     def __init__(self
                  , reduction=losses_utils.ReductionV2.AUTO
@@ -121,16 +107,6 @@ def categorical_corssentropy_with_label_gt(y_true, y_pred, num_classes=2, from_l
     y_true = smart_cond.smart_cond(label_smoothing,
                                    _smooth_labels, lambda: y_true)
     return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
-
-def gan_log_loss(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(K.log(y_pred + EPSILON), axis=-1)
-
-def gan_log_inverse_loss(y_true, y_pred):
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return K.mean(K.log(1.0 - y_pred + EPSILON), axis=-1)
 
 def wgan_loss(y_true, y_pred):
     y_pred = ops.convert_to_tensor(y_pred)
