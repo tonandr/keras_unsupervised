@@ -25,7 +25,6 @@ from tensorflow_core.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys #?
 
 from ..engine_ext import ModelExt
-from ..loss_ext import GANLogLoss, GANLogInverseLoss
 from ..loss_ext import WGANLoss, WGANGPLoss
 from ..loss_ext import SoftPlusInverseLoss, SoftPlusLoss, RPenaltyLoss
 
@@ -63,7 +62,7 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
         loss_conf = {'disc_ext_losses': [BinaryCrossentropy(from_logits=True), BinaryCrossentropy(from_logits=True)]
                     , 'disc_ext_loss_weights': [1.0, 1.0]
                     , 'gen_disc_losses': [BinaryCrossentropy(from_logits=True)]
-                    , 'gen_disc_loss_weights': [-1.0]}
+                    , 'gen_disc_loss_weights': [1.0]}
     elif lc_type == LOSS_CONF_TYPE_WGAN_GP:
         loss_conf = {'disc_ext_losses': [WGANLoss()
                                 , WGANLoss()
