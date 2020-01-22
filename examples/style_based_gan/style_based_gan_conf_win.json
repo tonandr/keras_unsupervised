@@ -6,10 +6,6 @@
 	"num_gpus" : 4,
 	"gan_mode": 2,
 	"hps" : {
-		"lr" : 0.0015,
-		"beta_1" : 0.0,
-		"beta_2" : 0.99,
-		"decay" : 0.0,
 		"epochs" : 12,
 		"batch_step" : 64,
 		"disc_k_step" : 2,
@@ -27,8 +23,13 @@
 	"nn_arch" : {
 		"label_usage" : true,
 		"resolution" : 64,
-		"num_classes" : 70000
+		"num_classes" : 70000,
+		"gen_prog_depths": [20, 36, 52, 68, 84],
+		"gen_prog_fixed_layer_names": ["tf_op_layer_add_1", "equalized_lr_conv2d_9"],
+		"disc_prog_depths": [25, 19, 13, 7, 1],
+		"disc_prog_fixed_layer_names": [null, "flatten_1"]
 	},
+	
 	"gen_hps" : {
 	},	
 	"gen_nn_arch" : {
@@ -46,5 +47,18 @@
 	},	
 	"disc_nn_arch" : {
 		"dropout_rate": 0.0
+	},
+	"disc_ext_hps": {
+		"lr" : 0.00015,
+		"beta_1" : 0.0,
+		"beta_2" : 0.99,
+		"decay" : 0.0
+	},
+	
+	"gen_disc_hps": {
+		"lr" : 0.0015,
+		"beta_1" : 0.0,
+		"beta_2" : 0.99,
+		"decay" : 0.0
 	}
 }

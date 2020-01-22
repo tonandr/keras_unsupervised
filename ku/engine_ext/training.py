@@ -292,16 +292,24 @@ class ModelExt(Model):
                                     , run_eagerly=True) #?         
         else:
             # Inputs.
-            inputs = Input(K.int_shape(self.get_layer(layer_names[prog_depth]).input)[1:]) # Multiple inputs?
+            inputs = [Input(K.int_shape(self.get_layer(layer_names[prog_depth]).input)[1:])] # Multiple inputs?
             
             # Initial and middle layers.
             x = inputs
             for idx in range(prog_depth, fixed_e_layer_depth):
                 x = self.get_layer(layer_names[idx])(x) # Input layer?
             
-            # Final layers.
+            # Final layers. ?
+            if len(self.inputs) > 1:
+                aug_inputs = [[Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in model_input] \
+                    for model_input in self.inputs[1:]]
+            
             for idx in range(fixed_e_layer_depth, total_depth):
-                x = self.get_layer(layer_names[idx])(x)
+                layer = self.get_layer(layer_names[idx])
+                if len(layer.inputs) > 1:
+                    x = layer([x] + aug_inputs)
+                else:
+                    x = layer(x) 
                         
             outputs = x
             prog_model = ModelExt(inputs, outputs, name='backward_prog_model') #?
