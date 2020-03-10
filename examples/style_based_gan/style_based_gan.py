@@ -523,7 +523,6 @@ class StyleGAN(AbstractGAN):
                                               , batch_shuffle=False)        
         
         # Train.
-        ''''
         self.fit_generator(generator_tr
                         , self.gen_disc_ext_data_fun
                         , self.gen_gen_disc_data_fun
@@ -542,6 +541,7 @@ class StyleGAN(AbstractGAN):
                         , workers=8
                         , use_multiprocessing=False
                         , shuffle=True) #?
+        '''
 
     def fit_generator(self
                       , generator

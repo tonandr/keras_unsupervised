@@ -156,8 +156,6 @@ class AbstractGAN(ABC):
                     self.gen = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'], name='gen') #?
                     self.disc = multi_gpu_model(self.disc, gpus=self.conf['num_gpus'], name='disc') #?
 
-            
-            
             #self._is_gan_compiled = True        
     
     @property
@@ -214,7 +212,7 @@ class AbstractGAN(ABC):
                          , loss=disc_ext_losses
                          , loss_weights=disc_ext_loss_weights
                          , metrics=disc_ext_metrics
-                         , run_eagerly=True)
+                         , run_eagerly=False) # run_eagerly?
         
         self.gen.trainable = True
         for layer in self.gen.layers: layer.trainable = True
@@ -226,7 +224,7 @@ class AbstractGAN(ABC):
                          , loss=gen_disc_losses
                          , loss_weights=gen_disc_loss_weights
                          , metrics=gen_disc_metrics
-                         , run_eagerly=True)
+                         , run_eagerly=False)
         self._is_gan_compiled = True
     
     @abstractmethod
@@ -1253,7 +1251,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         
         disc.trainable = True
         for layer in disc.layers: layer.trainable = True
-        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        x2_outputs = [disc(z_outputs + [z_inputs[1]])] if len(disc.outputs) == 1 else disc(z_outputs)
         
         disc_ext = ModelExt(inputs=x_inputs + z_inputs
                             , outputs=x_outputs + x2_outputs
@@ -1270,7 +1268,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         
         disc.trainable = False
         for layer in disc.layers: layer.trainable = False
-        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        z_p_outputs = [disc(z_outputs + [z_inputs[1]])] if len(disc.outputs) == 1 else disc(z_outputs)
 
         gen_disc = ModelExt(inputs=z_inputs
                             , outputs=z_p_outputs
@@ -1293,7 +1291,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         
         disc.trainable = True
         for layer in disc.layers: layer.trainable = True
-        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        x2_outputs = [disc(z_outputs + [z_inputs[1]])] if len(disc.outputs) == 1 else disc(z_outputs)
         
         x3_inputs = [[tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in disc.inputs][0]]
         x3_outputs = [disc(x3_inputs + [x_inputs[1]])]
@@ -1313,7 +1311,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         
         disc.trainable = False
         for layer in disc.layers: layer.trainable = False
-        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        z_p_outputs = [disc(z_outputs + [z_inputs[1]])] if len(disc.outputs) == 1 else disc(z_outputs)
 
         gen_disc = ModelExt(inputs=z_inputs
                             , outputs=z_p_outputs
@@ -1336,7 +1334,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         
         disc.trainable = True
         for layer in disc.layers: layer.trainable = True
-        x2_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        x2_outputs = [disc(z_outputs + [z_inputs[1]])] if len(disc.outputs) == 1 else disc(z_outputs)
                 
         disc_ext = ModelExt(inputs=x_inputs + z_inputs
                             , outputs=x_outputs + x_outputs + x2_outputs
@@ -1353,7 +1351,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         
         disc.trainable = False
         for layer in disc.layers: layer.trainable = False
-        z_p_outputs = [disc(z_outputs)] if len(disc.outputs) == 1 else disc(z_outputs)
+        z_p_outputs = [disc(z_outputs + [z_inputs[1]])] if len(disc.outputs) == 1 else disc(z_outputs)
 
         gen_disc = ModelExt(inputs=z_inputs
                             , outputs=z_p_outputs

@@ -264,12 +264,11 @@ class ModelExt(Model):
         # Make a progressive model.
         if prog_mode == self.PROGRESSIVE_MODE_FORWARD:
             # Inputs.
-            inputs =[[Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in model_input] \
-                    for model_input in self.inputs]
+            inputs =[Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in self.inputs]
             
             # Initial layers.
             x = inputs
-            for idx in range(fixed_s_layer_depth + 1):
+            for idx in range(len(inputs), fixed_s_layer_depth + 1): #?
                 x = self.get_layer(layer_names[idx])(x) # Input layer?
             
             # Middle layers.
@@ -296,15 +295,14 @@ class ModelExt(Model):
             
             # Initial and middle layers.
             x = inputs
-            for idx in range(prog_depth, fixed_e_layer_depth):
+            for idx in range(prog_depth, fixed_e_layer_depth + 1):
                 x = self.get_layer(layer_names[idx])(x) # Input layer?
             
             # Final layers. ?
             if len(self.inputs) > 1:
-                aug_inputs = [[Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in model_input] \
-                    for model_input in self.inputs[1:]]
+                aug_inputs = [Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in self.inputs[1:]]
             
-            for idx in range(fixed_e_layer_depth, total_depth):
+            for idx in range(fixed_e_layer_depth + 1, total_depth):
                 layer = self.get_layer(layer_names[idx])
                 if len(layer.inputs) > 1:
                     x = layer([x] + aug_inputs)
