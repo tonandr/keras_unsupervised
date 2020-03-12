@@ -307,7 +307,7 @@ class StyleGAN(AbstractGAN):
         Final layer's tensor.
             Tensor.
         """
-        x = Lambda(StyleGAN._apply_noise_layer)(x)
+        x = StyleGAN._apply_noise_layer(x)
         x = LeakyReLU(0.2)(x)
         x = Lambda(lambda x: x / tf.sqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + 1e-8))(x)
         dlatents_p = Lambda(lambda x: x[:, layer_idx])(dlatents)
@@ -453,7 +453,6 @@ class StyleGAN(AbstractGAN):
                 + [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
             
         z_outputs_b = [np.zeros(shape=tuple([num_samples] + list(self.disc.get_output_shape_at(0)[1:])))]
-        
         
         #def get_x3_inputs(x):
         #    n = K.random_normal((1, 1, 1))
