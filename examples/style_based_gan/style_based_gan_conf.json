@@ -16,7 +16,7 @@
 		"trunc_momentum" : 0.99,
 		"r_gamma": 10.0,
 		"ch_base" : 1024,
-		"max_ch" : 64,
+		"max_ch" : 512,
 		"wgan_lambda": 10.0,
 		"wgan_target": 1.0
 	},

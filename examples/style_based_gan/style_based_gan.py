@@ -162,12 +162,12 @@ class StyleGAN(AbstractGAN):
         
         Parameters
         ----------
-        layer_idx: integer
+        layer_idx: Integer
             Layer index.
         
         Returns:
             Number of channels for each layer.
-                integer
+                Integer
         """
         return int(np.min([int(self.hps['ch_base']) / (2.0 ** layer_idx)
                            , self.hps['max_ch']]))

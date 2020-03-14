@@ -103,15 +103,14 @@ class AbstractGAN(ABC):
         """
         Parameters
         ----------
-        conf: dict
+        conf: Dict.
             Configuration.
         """
-        self._is_gan_compiled = False
         self.conf = conf #?
         
         if self.conf['model_loading']:
             if not hasattr(self, 'custom_objects'):
-                RuntimeError('Before models, custom_objects must be created.')
+                raise RuntimeError('Before models, custom_objects must be created.')
                                                           
             self.custom_objects['ModelExt'] = ModelExt                                                          
             with CustomObjectScope(self.custom_objects):
@@ -154,9 +153,7 @@ class AbstractGAN(ABC):
                     """
                     
                     self.gen = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'], name='gen') #?
-                    self.disc = multi_gpu_model(self.disc, gpus=self.conf['num_gpus'], name='disc') #?
-
-            #self._is_gan_compiled = True        
+                    self.disc = multi_gpu_model(self.disc, gpus=self.conf['num_gpus'], name='disc') #?      
     
     @property
     def is_gan_compiled(self):
