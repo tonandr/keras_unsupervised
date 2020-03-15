@@ -209,7 +209,7 @@ class AbstractGAN(ABC):
                          , loss=disc_ext_losses
                          , loss_weights=disc_ext_loss_weights
                          , metrics=disc_ext_metrics
-                         , run_eagerly=False) # run_eagerly?
+                         , run_eagerly=True) # run_eagerly?
         
         self.gen.trainable = True
         for layer in self.gen.layers: layer.trainable = True
@@ -221,7 +221,7 @@ class AbstractGAN(ABC):
                          , loss=gen_disc_losses
                          , loss_weights=gen_disc_loss_weights
                          , metrics=gen_disc_metrics
-                         , run_eagerly=False)
+                         , run_eagerly=True)
         self._is_gan_compiled = True
     
     @abstractmethod

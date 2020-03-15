@@ -49,7 +49,6 @@ def _get_or_make_execution_function(model, mode):
   dist_utils.set_distributed_function(model, key, distribution_function)
   return distribution_function
 
-
 def _make_execution_function(model, mode):
   """Creates a function to run one step of distributed model execution."""
   per_replica_function = _make_replica_execution_function(model, mode)
@@ -81,11 +80,9 @@ def _make_execution_function(model, mode):
 
   return execution_function
 
-
 def _non_none_constant_value(v):
   constant_value = tensor_util.constant_value(v)
   return constant_value if constant_value is not None else v
-
 
 def _prepare_feed_values(model, inputs, mode):
   """Prepare feed values to the model execution function.
@@ -118,7 +115,6 @@ def _prepare_feed_values(model, inputs, mode):
   ins = [inputs, targets, sample_weights]
   return tuple(ins)
 
-
 def _get_input_from_iterator(iterator):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = next(iterator)
@@ -141,7 +137,6 @@ def _get_input_from_iterator(iterator):
       distribution_strategy_context.get_strategy(), x, y, sample_weights)
   return x, y, sample_weights
 
-
 def _make_replica_execution_function(model, mode):
   """A single step of the distributed execution on a replica."""
   if mode == ModeKeys.TRAIN:
@@ -162,7 +157,6 @@ def _make_replica_execution_function(model, mode):
 
   return func
 
-
 def _prepare_model_with_inputs(model, dataset):
   """Use the data from the adapter to config the model.
   Model need to be properly configured before training, eg build with inputs, or
@@ -182,7 +176,6 @@ def _prepare_model_with_inputs(model, dataset):
   if target is not None:
     training_utils.prepare_sample_weight_modes(model._training_endpoints,
                                                model.sample_weight_mode)
-
 
 def train_on_batch(
     model,
@@ -256,7 +249,6 @@ def train_on_batch(
   outputs['batch_size'] = math_ops.cast(batch_size, dtypes.int64)
   return outputs
 
-
 def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
   """Test the model on a single batch of samples.
   Arguments:
@@ -315,7 +307,6 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
 
   outputs['batch_size'] = math_ops.cast(batch_size, dtypes.int64)
   return outputs
-
 
 def predict_on_batch(model, x):
   """Returns predictions for a single batch of samples.

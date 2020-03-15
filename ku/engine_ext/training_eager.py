@@ -31,12 +31,10 @@ from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
-
 def _eager_loss_fn(outputs, targets, loss_fn, output_name):
   with backend.name_scope(output_name + '_loss'):
     loss = loss_fn(targets, outputs)
   return loss
-
 
 def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   """Calculates the metrics for each output of the given model.
@@ -77,7 +75,6 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
       if m not in model._compile_metric_functions
   ])
   return metric_results
-
 
 def _model_loss(model,
                 inputs,
@@ -204,7 +201,6 @@ def _model_loss(model,
 
   return outs, total_loss, output_losses, masks
 
-
 def _process_single_batch(model,
                           inputs,
                           targets,
@@ -274,7 +270,6 @@ def _process_single_batch(model,
     model._set_trainable_state(current_trainable_state)
     return outs, total_loss, output_losses, masks
 
-
 def train_on_batch(model,
                    inputs,
                    targets,
@@ -312,7 +307,6 @@ def train_on_batch(model,
   return {'total_loss': total_loss,
           'output_losses': output_losses,
           'metrics': metrics_results}
-
 
 def test_on_batch(model,
                   inputs,
