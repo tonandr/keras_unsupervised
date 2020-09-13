@@ -781,7 +781,7 @@ class StyleGAN(AbstractGAN):
                         outs = self.disc_ext.train_on_batch(inputs
                                  , outputs
                                  , class_weight=class_weight
-                                 , reset_metrics=True) #?
+                                 , reset_metrics=False) #?
                         del inputs, outputs
                         outs = to_list(outs) #?
                         
@@ -1568,12 +1568,8 @@ def main():
     """Main."""
     
     # Load configuration.
-    if platform.system() == 'Windows':
-        with open(os.path.join("style_based_gan_conf_win.json"), 'r') as f:
-            conf = json.load(f)  
-    else:
-        with open(os.path.join("style_based_gan_conf.json"), 'r') as f:
-            conf = json.load(f)   
+    with open(os.path.join("style_based_gan_conf.json"), 'r') as f:
+        conf = json.load(f)   
 
     if conf['mode'] == 'train':      
         # Train.

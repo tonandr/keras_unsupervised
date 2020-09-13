@@ -69,7 +69,7 @@ def resize_image(image, res):
         image = cv.resize(image, (w_p, h_p), interpolation=cv.INTER_CUBIC)
         image = cv.copyMakeBorder(image, 0, 0, pad_l, pad_r, cv.BORDER_CONSTANT, value=[0, 0, 0])
     
-    return image
+    return image, w, h, pad_t, pad_l, pad_b, pad_r
 
 def get_one_hot(inputs, num_classes):
     """Get one hot tensor.
