@@ -70,11 +70,11 @@ setup(
     #
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['tensorflow-probability==0.7.0'
-                      , 'pandas==0.25.1'
-                      , 'scikit-image==0.15.0'
-                      , 'matplotlib==3.1.0'
-                      , 'opencv-contrib-python==4.1.1.26'],  # Optional
+    install_requires=['tensorflow-probability'
+                      , 'pandas'
+                      , 'scikit-image'
+                      , 'matplotlib'
+                      , 'opencv-contrib-python'],  # Optional
 
     # Specify which Python versions you support. In contrast to the
     # 'Programming Language' classifiers above, 'pip install' will check this

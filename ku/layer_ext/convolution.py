@@ -5,13 +5,19 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import activations
+from tensorflow.python.keras import constraints
+from tensorflow.python.keras import initializers
+from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.layers.merge import _Merge
-from tensorflow.python.keras.layers import Layer, InputSpec, Dense, Conv2D, Conv2DTranspose, DepthwiseConv2D
-from tensorflow.python.keras.layers.convolutional import Conv
+from tensorflow.python.keras.layers import Layer, InputSpec, Dense, Conv2D, Conv3D
+from tensorflow.python.keras.layers import Conv2DTranspose, DepthwiseConv2D
+from tensorflow.python.keras.layers.convolutional import Conv, SeparableConv
 from tensorflow.python.keras.utils import conv_utils
 import tensorflow.keras.initializers as initializers
 
 from ku.backend_ext import tensorflow_backend as Ke
+
 
 class _EqualizedLRConv(Conv):
     """Equalized learning rate abstract convolution layer."""
@@ -109,6 +115,7 @@ class _EqualizedLRConv(Conv):
         base_config = super(_EqualizedLRConv, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+
 class EqualizedLRConv1D(_EqualizedLRConv):
     """Equalized learning rate 1d convolution layer."""
     
@@ -153,7 +160,8 @@ class EqualizedLRConv1D(_EqualizedLRConv):
 
     def build(self, input_shape):
         super(EqualizedLRConv1D, self).build(input_shape)
-        
+
+
 class EqualizedLRConv2D(_EqualizedLRConv):
     """Equalized learning rate 2d convolution layer."""
     
@@ -198,7 +206,8 @@ class EqualizedLRConv2D(_EqualizedLRConv):
 
     def build(self, input_shape):
         super(EqualizedLRConv2D, self).build(input_shape)
-        
+
+
 class EqualizedLRConv3D(_EqualizedLRConv):
     """Equalized learning rate 3d convolution layer."""
     
@@ -243,7 +252,8 @@ class EqualizedLRConv3D(_EqualizedLRConv):
 
     def build(self, input_shape):
         super(EqualizedLRConv3D, self).build(input_shape)
-        
+
+
 class _FusedEqualizedLRConv(Conv):
     """Fused, equalized learning rate abstraction convolution layer."""
     
@@ -355,7 +365,8 @@ class _FusedEqualizedLRConv(Conv):
         }
         base_config = super(_EqualizedLRConv, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-    
+
+
 class FusedEqualizedLRConv1D(_FusedEqualizedLRConv):
     """Fused, equalized learning rate 1d convolution layer."""
     
@@ -400,6 +411,7 @@ class FusedEqualizedLRConv1D(_FusedEqualizedLRConv):
 
     def build(self, input_shape):
         super(FusedEqualizedLRConv1D, self).build(input_shape)
+
 
 class FusedEqualizedLRConv2D(_FusedEqualizedLRConv):
     """Fused, equalized learning rate 2d convolution layer."""
@@ -446,6 +458,7 @@ class FusedEqualizedLRConv2D(_FusedEqualizedLRConv):
     def build(self, input_shape):
         super(FusedEqualizedLRConv2D, self).build(input_shape)
 
+
 class FusedEqualizedLRConv3D(_FusedEqualizedLRConv):
     """Fused, equalized learning rate 3d convolution layer."""
     
@@ -490,6 +503,7 @@ class FusedEqualizedLRConv3D(_FusedEqualizedLRConv):
 
     def build(self, input_shape):
         super(FusedEqualizedLRConv3D, self).build(input_shape)
+
 
 class FusedEqualizedLRConv2DTranspose(Conv2DTranspose): #?
     """Fused, equalized learning rate 2d transposed convolution layer."""
@@ -599,6 +613,7 @@ class FusedEqualizedLRConv2DTranspose(Conv2DTranspose): #?
             return self.activation(outputs)
         return outputs
 
+
 class BlurDepthwiseConv2D(DepthwiseConv2D): #?
     """Blur 2d depthwise convolution layer."""
     
@@ -674,7 +689,7 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
             name='blur_depthwise_kernel',
             regularizer=self.depthwise_regularizer,
             constraint=self.depthwise_constraint,
-            trainable=False)
+            trainable=True)
         
         if self.use_bias:
             self.bias = self.add_weight(shape=(input_dim * self.depth_multiplier,)
@@ -694,4 +709,339 @@ class BlurDepthwiseConv2D(DepthwiseConv2D): #?
         config = {'blur_kernel': self.blur_kernel
         }
         base_config = super(BlurDepthwiseConv2D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class DepthwiseConv3D(DepthwiseConv2D):  # ?
+    """3d depthwise convolution layer."""
+
+    def __init__(self
+                 , kernel_size
+                 , strides=(1, 1, 1)
+                 , padding='valid'
+                 , depth_multiplier=1
+                 , data_format=None
+                 , dilation_rate=(1, 1, 1)
+                 , activation=None
+                 , use_bias=True
+                 , depthwise_initializer='glorot_uniform'
+                 , bias_initializer='zeros'
+                 , depthwise_regularizer=None
+                 , bias_regularizer=None
+                 , activity_regularizer=None
+                 , depthwise_constraint=None
+                 , bias_constraint=None
+                 , **kwargs):
+        super(DepthwiseConv3D, self).__init__(kernel_size=kernel_size
+                                                  , strides=strides
+                                                  , padding=padding
+                                                  , depth_multiplier=depth_multiplier
+                                                  , data_format=data_format
+                                                  , dilation_rate=dilation_rate
+                                                  , activation=activation
+                                                  , use_bias=use_bias
+                                                  , depthwise_initializer=depthwise_initializer
+                                                  , bias_initializer=bias_initializer
+                                                  , depthwise_regularizer=depthwise_regularizer
+                                                  , bias_regularizer=bias_regularizer
+                                                  , activity_regularizer=activity_regularizer
+                                                  , depthwise_constraint=depthwise_constraint
+                                                  , bias_constraint=bias_constraint
+                                                  , **kwargs)
+
+
+    def build(self, input_shape):
+        if len(input_shape) < 5:
+            raise ValueError('Inputs to `DepthwiseConv3D` should have rank 5. '
+                             'Received input shape:', str(input_shape))
+        if self.data_format == 'channels_first':
+            channel_axis = 1
+        else:
+            channel_axis = 4
+        if input_shape.dims[channel_axis].value is None:
+            raise ValueError('The channel dimension of the inputs to '
+                             '`DepthwiseConv3D` '
+                             'should be defined. Found `None`.')
+        input_dim = int(input_shape[channel_axis])
+        self.depthwise_kernels = []
+
+        for c in range(input_dim * self.depth_multiplier):
+            depthwise_kernel_shape = (self.kernel_size[0],
+                                  self.kernel_size[1],
+                                  self.kernel_size[2])
+
+            self.depthwise_kernels.append(self.add_weight(
+                shape=depthwise_kernel_shape,
+                initializer=self.depthwise_initializer,
+                name='depthwise_kernel_' + str(c),
+                regularizer=self.depthwise_regularizer,
+                constraint=self.depthwise_constraint,
+                trainable=True))
+
+        if self.use_bias:
+            self.biases = []
+
+            for c in range(input_dim * self.depth_multiplier):
+                self.biases.append(self.add_weight(shape=(1,)
+                                        , initializer=self.bias_initializer
+                                        , name='bias_' + str(c)
+                                        , regularizer=self.bias_regularizer
+                                        , constraint=self.bias_constraint
+                                        , trainable=False))
+        else:
+            self.biases = None
+
+        # Set input spec.
+        self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
+        self.built = True
+
+    def call(self, inputs):
+        outputs = []
+
+        if self.data_format == 'channels_first':
+            count = 0
+
+            for c in range(self.input_spec.axes[1]):
+                input = inputs[:, c:c+1, ...]
+
+                for d in range(self.depth_multiplier):
+                    output = K.conv3d(input
+                                      , self.depthwise_kernels[count]
+                                      , padding=self.padding
+                                      , data_format=self.data_format
+                                      , dilation_rate=self.dilation_rate)
+
+                    if self.use_bias:
+                        output = K.bias_add(output
+                                            , self.biases[count]
+                                            , data_format=self.data_format)
+
+                    outputs.append(output)
+                    count +=1
+
+            outputs = K.concatenate(outputs, axis=1)
+        else:
+            count = 0
+
+            for c in range(self.input_spec.axes[4]):
+                input = inputs[:, c:c + 1, ...]
+
+                for d in range(self.depth_multiplier):
+                    output = K.conv3d(input
+                                      , self.depthwise_kernels[count]
+                                      , padding=self.padding
+                                      , data_format=self.data_format
+                                      , dilation_rate=self.dilation_rate)
+
+                    if self.use_bias:
+                        output = K.bias_add(output
+                                            , self.biases[count]
+                                            , data_format=self.data_format)
+
+                    outputs.append(output)
+                    count += 1
+
+            outputs = K.concatenate(outputs, axis=4)
+
+        if self.activation is not None:
+            return self.activation(outputs)
+        return outputs
+
+    def compute_output_shape(self, input_shape):
+        if self.data_format == 'channels_first':
+            rows = input_shape[2]
+            cols = input_shape[3]
+            hgts = input_shape[4]
+            out_filters = input_shape[1] * self.depth_multiplier
+        elif self.data_format == 'channels_last':
+            rows = input_shape[1]
+            cols = input_shape[2]
+            hgts = input_shape[3]
+            out_filters = input_shape[4] * self.depth_multiplier
+
+        rows = conv_utils.conv_output_length(rows, self.kernel_size[0],
+                                             self.padding,
+                                             self.strides[0],
+                                             self.dilation_rate[0])
+        cols = conv_utils.conv_output_length(cols, self.kernel_size[1],
+                                             self.padding,
+                                             self.strides[1],
+                                             self.dilation_rate[1])
+        hgts = conv_utils.conv_output_length(cols, self.kernel_size[2],
+                                             self.padding,
+                                             self.strides[2],
+                                             self.dilation_rate[2])
+
+        if self.data_format == 'channels_first':
+            return (input_shape[0], out_filters, rows, cols, hgts)
+        elif self.data_format == 'channels_last':
+            return (input_shape[0], rows, cols, hgts, out_filters)
+
+    def get_config(self):
+        config = {}
+        base_config = super(DepthwiseConv3D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class SeparableConv3D(SeparableConv):
+    """3d separable convolution layer."""
+
+    def __init__(self,
+                 filters,
+                 kernel_size,
+                 strides=(1, 1),
+                 padding='valid',
+                 data_format=None,
+                 dilation_rate=(1, 1),
+                 depth_multiplier=1,
+                 activation=None,
+                 use_bias=True,
+                 depthwise_initializer='glorot_uniform',
+                 pointwise_initializer='glorot_uniform',
+                 bias_initializer='zeros',
+                 depthwise_regularizer=None,
+                 pointwise_regularizer=None,
+                 bias_regularizer=None,
+                 activity_regularizer=None,
+                 depthwise_constraint=None,
+                 pointwise_constraint=None,
+                 bias_constraint=None,
+                 **kwargs):
+        super(SeparableConv3D, self).__init__(
+            rank=3,
+            filters=filters,
+            kernel_size=kernel_size,
+            strides=strides,
+            padding=padding,
+            data_format=data_format,
+            dilation_rate=dilation_rate,
+            depth_multiplier=depth_multiplier,
+            activation=activations.get(activation),
+            use_bias=use_bias,
+            depthwise_initializer=initializers.get(depthwise_initializer),
+            pointwise_initializer=initializers.get(pointwise_initializer),
+            bias_initializer=initializers.get(bias_initializer),
+            depthwise_regularizer=regularizers.get(depthwise_regularizer),
+            pointwise_regularizer=regularizers.get(pointwise_regularizer),
+            bias_regularizer=regularizers.get(bias_regularizer),
+            activity_regularizer=regularizers.get(activity_regularizer),
+            depthwise_constraint=constraints.get(depthwise_constraint),
+            pointwise_constraint=constraints.get(pointwise_constraint),
+            bias_constraint=constraints.get(bias_constraint),
+            **kwargs)
+
+    def build(self, input_shape):
+        if len(input_shape) < 5:
+            raise ValueError('Inputs to `SeparableConv3D` should have rank 5. '
+                             'Received input shape:', str(input_shape))
+        channel_axis = self._get_channel_axis()
+        if input_shape.dims[channel_axis].value is None:
+            raise ValueError('The channel dimension of the inputs to '
+                             '`SeparableConv3D` '
+                             'should be defined. Found `None`.')
+        input_dim = int(input_shape[channel_axis])
+        self.depthwise_kernels = []
+
+        for c in range(input_dim * self.depth_multiplier):
+            depthwise_kernel_shape = (self.kernel_size[0],
+                                  self.kernel_size[1],
+                                  self.kernel_size[2])
+
+            self.depthwise_kernels.append(self.add_weight(
+                shape=depthwise_kernel_shape,
+                initializer=self.depthwise_initializer,
+                name='depthwise_kernel_' + str(c),
+                regularizer=self.depthwise_regularizer,
+                constraint=self.depthwise_constraint,
+                trainable=True,
+                dtype=self.dtype))
+
+        pointwise_kernel_shape = (1,) * self.rank + (self.depth_multiplier * input_dim, self.filters)
+        self.pointwise_kernel = self.add_weight(
+            name='pointwise_kernel',
+            shape=pointwise_kernel_shape,
+            initializer=self.pointwise_initializer,
+            regularizer=self.pointwise_regularizer,
+            constraint=self.pointwise_constraint,
+            trainable=True,
+            dtype=self.dtype)
+
+        if self.use_bias:
+            self.biases = []
+
+            for c in range(input_dim * self.depth_multiplier):
+                self.biases.append(self.add_weight(shape=(1,)
+                                        , initializer=self.bias_initializer
+                                        , name='bias_' + str(c)
+                                        , regularizer=self.bias_regularizer
+                                        , constraint=self.bias_constraint
+                                        , trainable=False))
+        else:
+            self.biases = None
+
+        # Set input spec.
+        self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
+        self.built = True
+
+    def call(self, inputs):
+        outputs = []
+
+        if self.data_format == 'channels_first':
+            count = 0
+
+            for c in range(self.input_spec.axes[1]):
+                input = inputs[:, c:c+1, ...]
+
+                for d in range(self.depth_multiplier):
+                    output = K.conv3d(input
+                                      , self.depthwise_kernels[count]
+                                      , padding=self.padding
+                                      , data_format=self.data_format
+                                      , dilation_rate=self.dilation_rate)
+
+                    if self.use_bias:
+                        output = K.bias_add(output
+                                            , self.biases[count]
+                                            , data_format=self.data_format)
+
+                    outputs.append(output)
+                    count +=1
+
+            outputs = K.concatenate(outputs, axis=1)
+        else:
+            count = 0
+
+            for c in range(self.input_spec.axes[4]):
+                input = inputs[:, c:c + 1, ...]
+
+                for d in range(self.depth_multiplier):
+                    output = K.conv3d(input
+                                      , self.depthwise_kernels[count]
+                                      , padding=self.padding
+                                      , data_format=self.data_format
+                                      , dilation_rate=self.dilation_rate)
+
+                    if self.use_bias:
+                        output = K.bias_add(output
+                                            , self.biases[count]
+                                            , data_format=self.data_format)
+
+                    outputs.append(output)
+                    count += 1
+
+            outputs = K.concatenate(outputs, axis=4)
+
+        outputs = K.conv3d(outputs
+                           , self.pointwise_kernel
+                           , padding=self.padding
+                           , data_format=self.data_format
+                           , dilation_rate=self.dilation_rate)
+
+        if self.activation is not None:
+            return self.activation(outputs)
+        return outputs
+
+    def get_config(self):
+        config = {}
+        base_config = super(SeparableConv3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

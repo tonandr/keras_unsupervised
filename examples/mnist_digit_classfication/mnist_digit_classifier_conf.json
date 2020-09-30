@@ -1,0 +1,34 @@
+{
+	"mode": "train",
+	"raw_data_path": "../input/digit-recognizer",
+	"model_loading": false,
+	"multi_gpu": false,
+	"num_gpus": 4,
+	"eval_data_mode": 1,
+	"eval_result_saving": true,
+	"val_ratio": 0.1,
+    "dataset_type": "dataset",
+
+	"hps": {
+		"lr": 0.001,
+		"beta_1": 0.999,
+		"beta_2": 0.999,
+		"decay": 0.1,
+		"epochs": 12,
+		"batch_size": 32,
+		"weight_decay": 0.00004,
+		"bn_momentum": 0.9,
+		"bn_scale": true,
+		"reduce_lr_factor": 0.99
+	},
+
+	"nn_arch": {
+		"image_size": 256,
+		"demog_size": 11,
+		"sp_feature_dim": 64,
+		"cell_size": 4,
+		"conv_rate_multiplier" : 1,
+		"dropout_rate": 0.5,
+		"anchor_scale_size": 3
+	}
+}

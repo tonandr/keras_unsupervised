@@ -1,0 +1,2 @@
+from .nobody_convnet2d import NobodyConvNet2D
+from .nobody_convnet3d import NobodyConvNet3D

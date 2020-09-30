@@ -10,7 +10,7 @@ import shutil
 import numpy as np
 
 import tensorflow as tf
-import tensorflow_core.python.keras.backend as K 
+import tensorflow.python.keras.backend as K
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
@@ -18,10 +18,10 @@ from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.layers import Lambda
 from tensorflow.keras.losses import BinaryCrossentropy, MeanSquaredError
 
-from tensorflow_core.python.keras.utils.generic_utils import to_list, CustomObjectScope
-from tensorflow_core.python.keras.utils.data_utils import iter_sequence_infinite
-from tensorflow_core.python.keras import callbacks as cbks
-from tensorflow_core.python.keras.engine import training_utils
+from tensorflow.python.keras.utils.generic_utils import to_list, CustomObjectScope
+from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
+from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys #?
 
 from ..engine_ext import ModelExt
