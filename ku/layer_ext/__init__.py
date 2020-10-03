@@ -20,3 +20,4 @@ from .attention import MultiHeadAttention\
     , SIMILARITY_TYPE_GENERAL\
     , SIMILARITY_TYPE_ADDITIVE
 from .position_encoding import OrdinalPositionEncoding
+from .position_encoding import PeriodicPositionEncoding
