@@ -31,7 +31,7 @@ class OrdinalPositionEncoding(Layer):
         num_seq = tf.shape(inputs)[1]
 
         # Encode positions.
-        pe = x + self.pos[:, num_seq, :] # Broadcating?
+        pe = x + self.pos[:, :num_seq, :] # Broadcating?
 
         return pe
 
@@ -74,7 +74,7 @@ class PeriodicPositionEncoding(Layer):
         num_seq = tf.shape(inputs)[1]
 
         # Encode positions.
-        pe = x + self.pos[:, num_seq, :] # Broadcating?
+        pe = x + self.pos[:, :num_seq, :] # Broadcating?
 
         return pe
 
