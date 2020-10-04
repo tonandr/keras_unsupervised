@@ -53,43 +53,47 @@ class MultiHeadAttention(Layer):
                              'on four Q, K, V, M inputs')
 
         # Get dimension of K, V.
-        self.d_seq = input_shape[1][-2]
         self.d_k = input_shape[1][-1]
         self.d_v = input_shape[2][-1]
 
+        assert self.d_k % self.num_head == 0 and self.d_v % self.num_head == 0
+
+        self.d_k_h = self.d_k // self.num_head
+        self.d_v_h = self.d_v // self.num_head
+
         # Create linear weight tensors of Q, K, V for each head.
-        self.W_Qs = [self.add_weight(name='Q_linear_weight_' + str(i)
-                                 , shape=(self.d_output, self.d_k)
+        self.W_Q = self.add_weight(name='Q_linear_weight'
+                                 , shape=(self.d_k, self.d_k)
                                  , initializer='truncated_normal' # Which initializer is optimal?
-                                 , trainable=True) for i in range(self.num_head)]
-        self.W_Ks = [self.add_weight(name='K_linear_weight_' + str(i)
-                                 , shape=(self.d_output, self.d_k)
+                                 , trainable=True)
+        self.W_K = self.add_weight(name='K_linear_weight'
+                                 , shape=(self.d_k, self.d_k)
                                  , initializer='truncated_normal' # Which initializer is optimal?
-                                 , trainable=True) for i in range(self.num_head)]
-        self.W_Vs = [self.add_weight(name='V_linear_weight_' + str(i)
-                                 , shape=(self.d_output, self.d_v)
+                                 , trainable=True)
+        self.W_V = self.add_weight(name='V_linear_weight'
+                                 , shape=(self.d_v, self.d_v)
                                  , initializer='truncated_normal' # Which initializer is optimal?
-                                 , trainable=True) for i in range(self.num_head)]
+                                 , trainable=True)
 
         # Create weight tensors for similarity calculation.
         if self.similarity_type == SIMILARITY_TYPE_GENERAL:
-            self.W_gen_Ss = [self.add_weight(name='general_similarity_weight_' + str(i)
-                                 , shape=(self.d_k, self.d_k)
+            self.W_gen_S = self.add_weight(name='general_similarity_weight'
+                                 , shape=(self.d_k_h, self.d_k_h)
                                  , initializer='truncated_normal' # Which initializer is optimal?
-                                 , trainable=True) for i in range(self.num_head)]
+                                 , trainable=True)
         elif self.similarity_type == SIMILARITY_TYPE_ADDITIVE:
-            self.W_add_S_Qs = [self.add_weight(name='Q_additive_similarity_weight_' + str(i)
-                                 , shape=(self.d_k, self.d_seq)
+            self.W_add_S_Q = self.add_weight(name='Q_additive_similarity_weight'
+                                 , shape=(self.d_k_h, self.d_k_h)
                                  , initializer='truncated_normal' # Which initializer is optimal?
-                                 , trainable=True) for i in range(self.num_head)]
-            self.W_add_S_Ks = [self.add_weight(name='K_additive_similarity_weight_' + str(i)
-                                 , shape=(self.d_k, self.d_seq)
+                                 , trainable=True)
+            self.W_add_S_K = self.add_weight(name='K_additive_similarity_weight'
+                                 , shape=(self.d_k_h, self.d_k_h)
                                  , initializer='truncated_normal' # Which initializer is optimal?
-                                 , trainable=True) for i in range(self.num_head)]
+                                 , trainable=True)
 
         # Create the multi-head weight.
         self.W_multi_head = self.add_weight(name='multi_head_weight'
-                                 , shape=(int(self.num_head * self.d_v), self.d_output)
+                                 , shape=(self.d_v, self.d_output)
                                  , initializer='truncated_normal' # Which initializer is optimal?
                                  , trainable=True)
 
@@ -105,43 +109,42 @@ class MultiHeadAttention(Layer):
         V = inputs[2]
         M = inputs[3]
 
+        batch_size = tf.shape(K)[0]
+
         # Do self-attention according to the number of heads and a similarity type.
-        heads = []
+        # Do linear transformation.
+        Q_l = tf.tensordot(Q, self.W_Q, axes=((2), (0)))
+        K_l = tf.tensordot(K, self.W_K, axes=((2), (0)))
+        V_l = tf.tensordot(V, self.W_V, axes=((2), (0)))
 
-        for i in range(self.num_head):
-            # Do linear transformation.
-            Q_h = tf.tensordot(Q, self.W_Qs[i], axes=((2), (0)))
-            K_h = tf.tensordot(K, self.W_Ks[i], axes=((2), (0)))
-            V_h = tf.tensordot(V, self.W_Vs[i], axes=((2), (0)))
+        # Split heads.
+        Q_h = tf.transpose(tf.reshape(Q_l, (batch_size, -1, self.num_head, self.d_k_h)), perm=[0, 2, 1, 3])
+        K_h = tf.transpose(tf.reshape(K_l, (batch_size, -1, self.num_head, self.d_k_h)), perm=[0, 2, 1, 3])
+        V_h = tf.transpose(tf.reshape(V_l, (batch_size, -1, self.num_head, self.d_v_h)), perm=[0, 2, 1, 3])
 
-            # Do self-attention according to similarity type.
-            if self.similarity_type == SIMILARITY_TYPE_PLAIN:
-                head = tf.matmul(tf.nn.softmax(tf.matmul(Q_h, K_h, transpose_b=True) * M)
-                                 , V_h)
-            elif self.similarity_type == SIMILARITY_TYPE_SCALED:
-                head = tf.matmul(tf.nn.softmax(tf.matmul(Q_h, K_h, transpose_b=True) / np.sqrt(self.d_k) * M) #?
-                                 , V_h)
-            elif self.similarity_type == SIMILARITY_TYPE_GENERAL:
-                head = tf.matmul(tf.nn_softmax(tf.matmul(Q_h
-                                 , tf.tensordot(K_h, self.W_gen_Ss[i], axes=((2), (0))), transpose_b=True) * M)
-                                 , V_h)
-            elif self.similarity_type == SIMILARITY_TYPE_ADDITIVE:
-                head = tf.matmul(tf.nn_softmax((tf.tensordot(Q_h, self.W_add_S_Qs[i], axes=((2), (0))) \
-                       + tf.tensordot(K_h, self.W_add_S_Ks[i], axes=((2), (0)))) * M)
-                                 , V_h)
-            else:
-                raise ValueError('similarity_type is not valid.')
+        # Do self-attention according to similarity type.
+        if self.similarity_type == SIMILARITY_TYPE_PLAIN:
+            head = tf.matmul(tf.nn.softmax(tf.matmul(Q_h, K_h, transpose_b=True)) #* M)
+                             , V_h)
+        elif self.similarity_type == SIMILARITY_TYPE_SCALED:
+            head = tf.matmul(tf.nn.softmax(tf.matmul(Q_h, K_h, transpose_b=True) / np.sqrt(self.d_k)) #* M) #?
+                             , V_h)
+        elif self.similarity_type == SIMILARITY_TYPE_GENERAL:
+            head = tf.matmul(tf.nn.softmax(tf.matmul(Q_h
+                             , tf.tensordot(K_h, self.W_gen_S, axes=((3), (0))), transpose_b=True)) # * M)
+                             , V_h)
+        elif self.similarity_type == SIMILARITY_TYPE_ADDITIVE: #?
+            head = tf.matmul(tf.nn.softmax((tf.tensordot(Q_h, self.W_add_S_Q, axes=((3), (0))) \
+                   + tf.tensordot(K_h, self.W_add_S_K, axes=((3), (0)))) ) #* M)
+                             , V_h)
+        else:
+            raise ValueError('similarity_type is not valid.')
 
-            heads.append(head)
-
-        # Concatenate heads.
-        heads = tf.concat(heads, axis=-1)
+        head = tf.transpose(head, perm=[0, 2, 1, 3])
+        head = tf.reshape(head, (batch_size, -1, self.d_v))
 
         # Outputs.
-        if training:
-            outputs = tf.nn.dropout(tf.tensordot(heads, self.W_multi_head, axes=((2), (0))), rate=self.dropout_rate)
-        else:
-            outputs = tf.tensordot(heads, self.W_multi_head, axes=((2), (0)))
+        outputs = tf.tensordot(head, self.W_multi_head, axes=((2), (0)))
 
         return outputs
 
