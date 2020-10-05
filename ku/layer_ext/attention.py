@@ -62,6 +62,7 @@ class MultiHeadAttention(Layer):
         self.d_v_h = self.d_v // self.num_head
 
         # Create linear weight tensors of Q, K, V for each head.
+        '''
         self.W_Q = self.add_weight(name='Q_linear_weight'
                                  , shape=(self.d_k, self.d_k)
                                  , initializer='truncated_normal' # Which initializer is optimal?
@@ -74,6 +75,7 @@ class MultiHeadAttention(Layer):
                                  , shape=(self.d_v, self.d_v)
                                  , initializer='truncated_normal' # Which initializer is optimal?
                                  , trainable=True)
+        '''
 
         # Create weight tensors for similarity calculation.
         if self.similarity_type == SIMILARITY_TYPE_GENERAL:
@@ -113,14 +115,14 @@ class MultiHeadAttention(Layer):
 
         # Do self-attention according to the number of heads and a similarity type.
         # Do linear transformation.
-        Q_l = tf.tensordot(Q, self.W_Q, axes=((2), (0)))
-        K_l = tf.tensordot(K, self.W_K, axes=((2), (0)))
-        V_l = tf.tensordot(V, self.W_V, axes=((2), (0)))
+        #Q_l = tf.tensordot(Q, self.W_Q, axes=((2), (0)))
+        #K_l = tf.tensordot(K, self.W_K, axes=((2), (0)))
+        #V_l = tf.tensordot(V, self.W_V, axes=((2), (0)))
 
         # Split heads.
-        Q_h = tf.transpose(tf.reshape(Q_l, (batch_size, -1, self.num_head, self.d_k_h)), perm=[0, 2, 1, 3])
-        K_h = tf.transpose(tf.reshape(K_l, (batch_size, -1, self.num_head, self.d_k_h)), perm=[0, 2, 1, 3])
-        V_h = tf.transpose(tf.reshape(V_l, (batch_size, -1, self.num_head, self.d_v_h)), perm=[0, 2, 1, 3])
+        Q_h = tf.transpose(tf.reshape(Q, (batch_size, -1, self.num_head, self.d_k_h)), perm=[0, 2, 1, 3])
+        K_h = tf.transpose(tf.reshape(K, (batch_size, -1, self.num_head, self.d_k_h)), perm=[0, 2, 1, 3])
+        V_h = tf.transpose(tf.reshape(V, (batch_size, -1, self.num_head, self.d_v_h)), perm=[0, 2, 1, 3])
 
         # Do self-attention according to similarity type.
         if self.similarity_type == SIMILARITY_TYPE_PLAIN:
