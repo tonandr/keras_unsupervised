@@ -13,6 +13,7 @@ from tensorflow.keras.layers import Dense, Conv1D, Conv2D, Conv3D\
     , Concatenate, Lambda, UpSampling2D
 from tensorflow.keras import optimizers
 
+from ..composite_layer import DenseBatchNormalization
 from ..engine_ext import ModelExt
 
 def reverse_model(model):
@@ -72,6 +73,19 @@ def _get_reversed_outputs(output_layer, input_r):
         # Get an upper layer.
         upper_layer = in_node.inbound_layers
         return _get_reversed_outputs(upper_layer, output)
+    elif isinstance(out_layer, (DenseBatchNormalization)):
+        x = Dense(out_layer.dense_1.input_shape[1]
+                  , activation=out_layer.dense_1.activation
+                  , use_bias=out_layer.dense_1.use_bias)(input_r)
+        if out_layer.activation_1 is not None:
+            x = out_layer.activation_1(x)
+        if out_layer.dropout_1 is not None:
+            x = out_layer.dropout_1(x)
+        output = out_layer.batchnormalization_1(x)
+
+        # Get an upper layer.
+        upper_layer = in_node.inbound_layers
+        return _get_reversed_outputs(upper_layer, output)
     elif isinstance(out_layer, (Conv1D, SeparableConv1D)): #?
         # TODO
         pass
@@ -102,26 +116,6 @@ def _get_reversed_outputs(output_layer, input_r):
                                      , padding='same' #?
                                      , activation=out_layer.activation
                                      , use_bias=out_layer.use_bias)(input_r) #?
-            
-        # Get an upper layer.
-        upper_layer = in_node.inbound_layers
-        return _get_reversed_outputs(upper_layer, output)
-    elif isinstance(out_layer, Activation):
-        output = Activation(out_layer.activation)(input_r) #?
-            
-        # Get an upper layer.
-        upper_layer = in_node.inbound_layers
-        return _get_reversed_outputs(upper_layer, output)
-    elif isinstance(out_layer, LeakyReLU):
-        output = LeakyReLU(out_layer.alpha)(input_r) #?
-            
-        # Get an upper layer.
-        upper_layer = in_node.inbound_layers
-        return _get_reversed_outputs(upper_layer, output)    
-    elif isinstance(out_layer, BatchNormalization):
-        output = BatchNormalization(axis=out_layer.axis
-                                        , momentum=out_layer.momentum
-                                        , epsilon=out_layer.epsilon)(input_r) #?
             
         # Get an upper layer.
         upper_layer = in_node.inbound_layers
