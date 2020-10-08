@@ -28,7 +28,8 @@ from tensorflow.python.keras.utils.mode_keys import ModeKeys #?
 class DenseBatchNormalization(Layer):
     """Dense and batch-normalization composite layer."""
 
-    def __init__(self, dense, batchnormalization, activation=None, dropout=None):
+    def __init__(self, dense, batchnormalization, activation=None, dropout=None, **kwargs):
+        super(DenseBatchNormalization, self).__init__(**kwargs)
         self.dense_1 = dense
         self.activation_1 = activation
         self.dropout_1 = dropout
@@ -44,3 +45,9 @@ class DenseBatchNormalization(Layer):
 
         outputs = x
         return outputs
+
+    def get_config(self):
+        """Get configuration."""
+        config = {}
+        base_config = super(DenseBatchNormalization, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
