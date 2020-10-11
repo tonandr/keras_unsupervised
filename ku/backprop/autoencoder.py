@@ -16,6 +16,7 @@ from tensorflow.keras import optimizers
 from ..composite_layer import DenseBatchNormalization
 from ..engine_ext import ModelExt
 
+
 def reverse_model(model):
     """Reverse a model.
     
@@ -44,6 +45,7 @@ def reverse_model(model):
     output = _get_reversed_outputs(output_layer, input_r)
     
     return Model(inputs=input_r, outputs=output)
+
 
 def _get_reversed_outputs(output_layer, input_r):
     """Get reverse outputs recursively. ?
@@ -126,6 +128,7 @@ def _get_reversed_outputs(output_layer, input_r):
     else:
         raise RuntimeError('Layers must be supported in layer reversing.')
 
+
 def make_autoencoder_with_symmetry_skip_connection(autoencoder, name=None):
     """Make autoencoder with symmetry skip-connection.
     
@@ -182,7 +185,33 @@ def make_autoencoder_with_symmetry_skip_connection(autoencoder, name=None):
     output = x
          
     return Model(inputs=inputs, outputs=[output], name=name) #?
-                    
+
+
+def make_decoder_with_encoder(encoder, name=None):
+    """Make decoder with encoder.
+
+    Parameters
+    ----------
+    encoder: Keras model
+        Encoder.
+    name: String.
+        Autoencoder model's name.
+
+    Returns
+    -------
+    Autoencoder model
+        Keras model.
+    """
+
+    # Check exception.?
+    # Get a reverse model.
+    encoder._init_set_name('encoder')
+    decoder = reverse_model(encoder)
+    decoder._init_set_name('decoder')
+
+    return decoder
+
+
 def make_autoencoder_with_encoder(encoder, name=None):
     """Make autoencoder with encoder.
     
