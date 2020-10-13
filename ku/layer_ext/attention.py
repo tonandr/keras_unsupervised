@@ -6,18 +6,10 @@ import numpy as np
 
 import tensorflow as tf
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import activations
-from tensorflow.python.keras import constraints
-from tensorflow.python.keras import initializers
-from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.layers.merge import _Merge
 from tensorflow.python.keras.layers import Layer, InputSpec, Dense, Conv2D, Conv3D
-from tensorflow.python.keras.layers import Conv2DTranspose, DepthwiseConv2D
-from tensorflow.python.keras.layers.convolutional import Conv, SeparableConv
-from tensorflow.python.keras.utils import conv_utils
-import tensorflow.keras.initializers as initializers
 
 # Constants.
+SIMILARITY_TYPE_DIFF_ABS = 'diff_abs'
 SIMILARITY_TYPE_PLAIN = 'plain'
 SIMILARITY_TYPE_SCALED = 'scaled'
 SIMILARITY_TYPE_GENERAL = 'general'
@@ -31,7 +23,8 @@ class MultiHeadAttention(Layer):
         # Check exception.
         if isinstance(num_head, int) != True \
                         or isinstance(d_output, int) != True \
-                        or (similarity_type in [SIMILARITY_TYPE_PLAIN
+                        or (similarity_type in [SIMILARITY_TYPE_DIFF_ABS
+                                        , SIMILARITY_TYPE_PLAIN
                                         , SIMILARITY_TYPE_SCALED
                                         , SIMILARITY_TYPE_GENERAL
                                         , SIMILARITY_TYPE_ADDITIVE]) != True \
@@ -123,7 +116,10 @@ class MultiHeadAttention(Layer):
         V_h = tf.transpose(tf.reshape(V_l, (batch_size, -1, self.num_head, self.d_v_h)), perm=[0, 2, 1, 3])
 
         # Do self-attention according to similarity type.
-        if self.similarity_type == SIMILARITY_TYPE_PLAIN:
+        if self.similarity_type == SIMILARITY_TYPE_DIFF_ABS:
+            head = tf.matmul(tf.nn.softmax(tf.math.exp(-1.0 * tf.abs(Q_h - tf.transpose(K_h, (0, 1, 3, 2))))) #* M)
+                             , V_h)
+        elif self.similarity_type == SIMILARITY_TYPE_PLAIN:
             head = tf.matmul(tf.nn.softmax(tf.matmul(Q_h, K_h, transpose_b=True)) #* M)
                              , V_h)
         elif self.similarity_type == SIMILARITY_TYPE_SCALED:

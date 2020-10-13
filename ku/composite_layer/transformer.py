@@ -7,6 +7,7 @@ from tensorflow.python.keras import backend
 from tensorflow.keras.layers import Layer, Dense, Lambda, Add, LayerNormalization, Concatenate, Dropout
 
 from ..layer_ext import MultiHeadAttention\
+    , SIMILARITY_TYPE_DIFF_ABS\
     , SIMILARITY_TYPE_PLAIN\
     , SIMILARITY_TYPE_SCALED\
     , SIMILARITY_TYPE_GENERAL\
@@ -28,7 +29,8 @@ class Transformer(Layer):
         # Check exception.
         if isinstance(num_head, int) != True \
                         or isinstance(d_output, int) != True \
-                        or (similarity_type in [SIMILARITY_TYPE_PLAIN
+                        or (similarity_type in [SIMILARITY_TYPE_DIFF_ABS
+                                        , SIMILARITY_TYPE_PLAIN
                                         , SIMILARITY_TYPE_SCALED
                                         , SIMILARITY_TYPE_GENERAL
                                         , SIMILARITY_TYPE_ADDITIVE]) != True \

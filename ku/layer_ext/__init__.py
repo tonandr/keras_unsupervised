@@ -15,6 +15,7 @@ from .convolution import BlurDepthwiseConv2D
 from .convolution import DepthwiseConv3D
 from .convolution import SeparableConv3D
 from .attention import MultiHeadAttention\
+    , SIMILARITY_TYPE_DIFF_ABS\
     , SIMILARITY_TYPE_PLAIN\
     , SIMILARITY_TYPE_SCALED\
     , SIMILARITY_TYPE_GENERAL\
