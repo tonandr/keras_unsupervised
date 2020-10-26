@@ -11,6 +11,7 @@ from tensorflow.keras.layers import Dense, Conv1D, Conv2D, Conv3D\
     , Concatenate, Lambda, UpSampling1D, UpSampling2D
 
 from ..composite_layer import DenseBatchNormalization
+from ..gnn_layer import GraphConvolutionNetwork
 
 
 def reverse_model(model):
@@ -30,11 +31,13 @@ def reverse_model(model):
     """
     
     # Check exception.
-    # TODO
-    
-    # Get all layers and extract the input layer and output layer.
     layers = model.layers
     output_layer = layers[-1]
+
+    if isinstance(output_layer.output, list):
+        raise RuntimeError('Output must not be list.')
+    
+    # Get all layers and extract the input layer and output layer.
     input_r = tf.keras.Input(shape=K.int_shape(output_layer.output)[1:])  
     
     # Reconstruct the model reversely.
@@ -155,6 +158,15 @@ def _get_reversed_outputs(output_layer, input_r):
         # Get an upper layer.
         upper_layer = in_node.inbound_layers
         return _get_reversed_outputs(upper_layer, output)
+    elif isinstance(out_layer, GraphConvolutionNetwork):
+        outputs = GraphConvolutionNetwork(out_layer.n_node
+                                 , out_layer.input_shape[0][-1]
+                                 , output_adjacency=out_layer.output_adjcency
+                                 , activation=out_layer.activation)(input_r)  # ?
+
+        # Get an upper layer.
+        upper_layer = in_node.inbound_layers
+        return _get_reversed_outputs(upper_layer, outputs)
     else:
         raise RuntimeError('Layers must be supported in layer reversing.')
 

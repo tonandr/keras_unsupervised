@@ -40,7 +40,6 @@ class MultiHeadAttention(Layer):
         super(MultiHeadAttention, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        super(MultiHeadAttention, self).build(input_shape)
         if len(input_shape) != 4:
             raise ValueError('MultiHeadAttention layer should be called '
                              'on four Q, K, V, M inputs')
@@ -89,6 +88,8 @@ class MultiHeadAttention(Layer):
                                  , shape=(self.d_v, self.d_output)
                                  , initializer='truncated_normal' # Which initializer is optimal?
                                  , trainable=True)
+
+        super(MultiHeadAttention, self).build(input_shape)
 
     def call(self, inputs, training=None):
         # Check exception.
