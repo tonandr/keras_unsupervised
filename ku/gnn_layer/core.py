@@ -8,6 +8,7 @@ import tensorflow as tf
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.layers.merge import _Merge
 from tensorflow.python.keras.layers import Layer, InputSpec, Dense
+from tensorflow.python.keras import activations
 import tensorflow.keras.initializers as initializers
 
 from ..backend_ext import tensorflow_backend as Ke
@@ -28,7 +29,7 @@ class GraphConvolutionNetwork(Layer):
         self.n_node = n_node
         self.d_out = d_out
         self.output_adjacency = output_adjacency
-        self.activation = activation
+        self.activation = activations.get(activation)
         super(GraphConvolutionNetwork, self).__init__(**kwargs)
 
     def build(self, input_shape):
