@@ -48,6 +48,9 @@ class GraphConvolutionNetwork(Layer):
         A = inputs[1]
 
         A_t = A + self.I
+        D_t = tf.linalg.diag(tf.pow(K.sum(A_t, axis=2), -0.5))
+        A_t = K.batch_dot(K.batch_dot(D_t, A_t), D_t)
+
         X_p = tf.tensordot(K.batch_dot(A_t, X), self.W, axes=[[-1], [0]])
 
         if self.activation is not None:
