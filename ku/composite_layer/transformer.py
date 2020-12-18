@@ -4,14 +4,19 @@ from __future__ import print_function
 
 import tensorflow as tf
 from tensorflow.python.keras import backend
-from tensorflow.keras.layers import Layer, Dense, Lambda, Add, LayerNormalization, Concatenate, Dropout
+from tensorflow.keras.layers import (Layer
+    , Dense
+    , Add
+    , LayerNormalization
+    , Concatenate
+    , Dropout)
 
-from ..layer_ext import MultiHeadAttention\
-    , SIMILARITY_TYPE_DIFF_ABS\
-    , SIMILARITY_TYPE_PLAIN\
-    , SIMILARITY_TYPE_SCALED\
-    , SIMILARITY_TYPE_GENERAL\
-    , SIMILARITY_TYPE_ADDITIVE
+from ..layer_ext import (MultiHeadAttention
+    , SIMILARITY_TYPE_DIFF_ABS
+    , SIMILARITY_TYPE_PLAIN
+    , SIMILARITY_TYPE_SCALED
+    , SIMILARITY_TYPE_GENERAL
+    , SIMILARITY_TYPE_ADDITIVE)
 
 
 class Transformer(Layer):

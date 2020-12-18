@@ -2,26 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from abc import ABC, abstractmethod
-import os
-import warnings
-import shutil
-
-import numpy as np
-
-import tensorflow as tf
-from tensorflow.python.keras import backend
-from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
-from tensorflow.keras.callbacks import TensorBoard
-from tensorflow.keras.layers import Layer, Dense, Lambda, Add, LayerNormalization, Concatenate, Dropout
-from tensorflow.keras.losses import BinaryCrossentropy, MeanSquaredError
-
-from tensorflow.python.keras.utils.generic_utils import to_list, CustomObjectScope
-from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
-from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.utils.mode_keys import ModeKeys #?
+from tensorflow.keras.layers import Layer
 
 
 class DenseBatchNormalization(Layer):

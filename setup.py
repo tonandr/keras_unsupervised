@@ -13,7 +13,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='keras-unsupervised',  # Required
-    version='1.0.19.dev1',  # Required
+    version='1.0.20.dev1',  # Required
     description='Keras based unsupervised learning framework.',  # Optional
     long_description=long_description,  # Optional
     long_description_content_type='text/markdown',  # Optional (see note above)

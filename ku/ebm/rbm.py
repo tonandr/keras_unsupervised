@@ -15,6 +15,7 @@ MODE_VISIBLE_BERNOULLI = 0
 MODE_VISIBLE_GAUSSIAN = 1
 MODE_COMPLEX = 2 # TODO
 
+
 class RBM(Layer):
     """Restricted Boltzmann machine based on Keras."""
     

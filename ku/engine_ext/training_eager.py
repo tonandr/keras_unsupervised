@@ -24,7 +24,7 @@ from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
+from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils

@@ -2,18 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.layers import Layer
-from tensorflow.python.keras import initializers
-
-from ku.backend_ext import tensorflow_backend as Ke
-
 # Constants.
 MODE_VISIBLE_BERNOULLI = 0
 MODE_VISIBLE_GAUSSIAN = 1
 MODE_COMPLEX = 2 # TODO
+
 
 class DBN(object):
     """Deep belief network."""
