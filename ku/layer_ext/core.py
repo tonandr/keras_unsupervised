@@ -4,10 +4,15 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.keras import backend as K
+import tensorflow as tf
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import nn_ops
+
+from tensorflow.keras import backend as K
 from tensorflow.python.keras.layers.merge import _Merge
 from tensorflow.python.keras.layers import Layer, InputSpec, Dense
 import tensorflow.keras.initializers as initializers
+from tensorflow.python.keras.layers import core as core_ops
 
 from ..backend_ext import tensorflow_backend as Ke
 
@@ -48,7 +53,7 @@ class EqualizedLRDense(Dense):
         init_std = 1.0 / self.lrmul
         self.runtime_coeff = he_std * self.lrmul
                 
-        self.kernel_initializer = initializers.TruncatedNormal(mean=0.0, stddev=init_std)
+        self.kernel_initializer = initializers.TruncatedNormal(mean=0.0, stddev=init_std) #?
         super(EqualizedLRDense, self).build(input_shape)
 
     def call(self, inputs):                    
@@ -56,7 +61,7 @@ class EqualizedLRDense(Dense):
         outputs = K.dot(inputs, scaled_kernel)
 
         if self.use_bias:
-            outputs = K.bias_add(outputs, self.bias, data_format='channels_last')
+            outputs = K.bias_add(outputs, self.bias, data_format='channels_last') #?
         if self.activation is not None:
             outputs = self.activation(outputs)
 

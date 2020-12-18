@@ -10,7 +10,7 @@ import shutil
 import numpy as np
 
 import tensorflow as tf
-import tensorflow.python.keras.backend as K
+import tensorflow.keras.backend as K
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer

@@ -31,7 +31,6 @@ from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.layers import Input, Conv2D, Conv3D, ZeroPadding2D, LeakyReLU, Lambda, Concatenate
 from tensorflow.keras.layers import SeparableConv2D, BatchNormalization, GlobalAveragePooling3D, UpSampling3D
 from tensorflow.keras.layers import Activation, Reshape, Add, Multiply, Dropout, UpSampling2D, Dense, Flatten
-from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras import optimizers
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras import backend as K

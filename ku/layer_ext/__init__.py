@@ -14,11 +14,11 @@ from .convolution import FusedEqualizedLRConv2DTranspose
 from .convolution import BlurDepthwiseConv2D
 from .convolution import DepthwiseConv3D
 from .convolution import SeparableConv3D
-from .attention import MultiHeadAttention\
-    , SIMILARITY_TYPE_DIFF_ABS\
-    , SIMILARITY_TYPE_PLAIN\
-    , SIMILARITY_TYPE_SCALED\
-    , SIMILARITY_TYPE_GENERAL\
-    , SIMILARITY_TYPE_ADDITIVE
+from .attention import (MultiHeadAttention
+    , SIMILARITY_TYPE_DIFF_ABS
+    , SIMILARITY_TYPE_PLAIN
+    , SIMILARITY_TYPE_SCALED
+    , SIMILARITY_TYPE_GENERAL
+    , SIMILARITY_TYPE_ADDITIVE)
 from .position_encoding import OrdinalPositionEncoding
 from .position_encoding import PeriodicPositionEncoding
