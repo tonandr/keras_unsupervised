@@ -12,7 +12,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.keras import backend
 from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.layers import Layer, Dense, Lambda, Add, LayerNormalization, Concatenate, Dropout

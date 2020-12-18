@@ -12,7 +12,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.layers import Lambda
@@ -129,32 +128,7 @@ class AbstractGAN(ABC):
                 # gen, disc.
                 self.gen = self.gen_disc.get_layer('gen')
                 self.disc = self.gen_disc.get_layer('disc')
-                
-                if conf['multi_gpu']: #?
-                    """
-                    self.disc_ext = multi_gpu_model(self.disc_ext
-                                                    , gpus=self.conf['num_gpus']
-                                                    , name='disc_ext')
-                    
-                    self.disc_ext.compile(optimizer=self.disc_ext.optimizer
-                                          , loss=self.disc_ext.losses
-                                          , loss_weights=self.disc_ext.loss_weights
-                                          , run_eagerly=True)
-                    """
-                    
-                    self.gen_disc = multi_gpu_model(self.gen_disc
-                                                    , gpus=self.conf['num_gpus']
-                                                    , name='gen_disc')
-                    """
-                    self.gen_disc.compile(optimizer=self.gen_disc.optimizer
-                                          , loss=self.gen_disc.losses
-                                          , loss_weights=self.gen_disc.loss_weights
-                                          , run_eagerly=True)
-                    """
-                    
-                    self.gen = multi_gpu_model(self.gen, gpus=self.conf['num_gpus'], name='gen') #?
-                    self.disc = multi_gpu_model(self.disc, gpus=self.conf['num_gpus'], name='disc') #?      
-    
+
     @property
     def is_gan_compiled(self):
         return self._is_gan_compiled
@@ -1253,9 +1227,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc_ext = ModelExt(inputs=x_inputs + z_inputs
                             , outputs=x_outputs + x2_outputs
                             , name='disc_ext')
-        if multi_gpu:
-            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
-                
+
         # Compose gen_disc.
         z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
@@ -1270,8 +1242,6 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         gen_disc = ModelExt(inputs=z_inputs
                             , outputs=z_p_outputs
                             , name='gen_disc')
-        if multi_gpu:
-            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')
     elif mode == STYLE_GAN_WGAN_GP:
         # Compose gan.                    
         # Compose disc_ext.
@@ -1296,9 +1266,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc_ext = ModelExt(inputs=x_inputs + z_inputs + x3_inputs
                             , outputs=x_outputs + x2_outputs + x3_outputs
                             , name='disc_ext')
-        if multi_gpu:
-            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
-                
+
         # Compose gen_disc.
         z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
@@ -1313,8 +1281,6 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         gen_disc = ModelExt(inputs=z_inputs
                             , outputs=z_p_outputs
                             , name='gen_disc')
-        if multi_gpu:
-            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')
     elif mode == STYLE_GAN_SOFTPLUS_INVERSE_R1_GP:
         # Compose gan.                    
         # Compose disc_ext.
@@ -1336,9 +1302,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc_ext = ModelExt(inputs=x_inputs + z_inputs
                             , outputs=x_outputs + x_outputs + x2_outputs
                             , name='disc_ext')
-        if multi_gpu:
-            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') # Name?   
-                
+
         # Compose gen_disc.
         z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
@@ -1353,8 +1317,6 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         gen_disc = ModelExt(inputs=z_inputs
                             , outputs=z_p_outputs
                             , name='gen_disc')
-        if multi_gpu:
-            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus, name='gen_disc')   
     elif mode == PIX2PIX_GAN:
         # Compose gan.                    
         # Compose disc_ext.
@@ -1382,9 +1344,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc_ext = ModelExt(inputs=x_inputs + z_inputs + cond_inputs
                             , outputs=x_outputs + x2_outputs
                             , name='disc_ext')
-        if multi_gpu:
-            disc_ext = multi_gpu_model(disc_ext, gpus=num_gpus, name='disc_ext') 
-                
+
         # Compose gen_disc.
         z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
@@ -1405,8 +1365,6 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         gen_disc = ModelExt(inputs=z_inputs + cond_inputs
                             , outputs=z_p_outputs + z_outputs 
                             , name='gen_disc')
-        if multi_gpu:
-            gen_disc = multi_gpu_model(gen_disc, gpus=num_gpus)
     elif mode == CYCLE_GAN:
         # TODO
         pass

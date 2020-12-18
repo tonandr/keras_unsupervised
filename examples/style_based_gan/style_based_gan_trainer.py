@@ -17,7 +17,6 @@ from tqdm import tqdm
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.layers import Input, Dense, Lambda
 import tensorflow.keras.backend as K
-from tensorflow.keras.utils import multi_gpu_model
 from tensorflow.keras import optimizers
 from tensorflow.keras.utils import CustomObjectScope
 
@@ -113,18 +112,7 @@ class StyleBasedGANTrainer(Trainer):
             self.model_loading = conf['model_loading']
                 
             if self.model_loading:
-                if self.conf['multi_gpu']:
-                    self.model = load_model(os.path.join(self.MODEL_PATH)) # Check exception.
-                    self.parallel_model = multi_gpu_model(self.model, gpus = self.conf['num_gpus'])
-                    
-                    opt = optimizers.Adam(lr=self.hps['lr']
-                        , beta_1=self.hps['beta_1']
-                        , beta_2=self.hps['beta_2']
-                        , decay=self.hps['decay'])
-                    
-                    self.parallel_model.compile(optimizer=opt, loss='mse')
-                else: 
-                    self.model = load_model(os.path.join(self.MODEL_PATH)) # Check exception.
+                self.model = load_model(os.path.join(self.MODEL_PATH)) # Check exception.
             else:
                 # Design action value function.            
                 # Input.
@@ -136,30 +124,16 @@ class StyleBasedGANTrainer(Trainer):
                     x = Dense(self.nn_arch['dense_layer_dim'], activation='relu', name='dense' + str(i + 1))(x)
                     
                 action_value = Dense(1, activation='linear', name='action_value_dense')(x)
-                
-                if self.conf['multi_gpu']:
-                    self.model = Model(inputs=[input_a], outputs = [action_value], name='opt_critic')
-                    opt = optimizers.Adam(lr=self.hps['lr']
-                                            , beta_1=self.hps['beta_1']
-                                            , beta_2=self.hps['beta_2']
-                                            , decay=self.hps['decay'])
-                    
-                    self.model.compile(optimizer=opt, loss='mse')
-                    #self.model.summary()                    
-                        
-                    self.parallel_model = multi_gpu_model(self.model, gpus = self.conf['num_gpus'], name='opt_critic_p')
-                    self.parallel_model.compile(optimizer=opt, loss='mse')
-                    #self.parallel_model.summary() 
-                else:
-                    self.model = Model(inputs=[input_a], outputs = [action_value], name='opt_critic')
-                    
-                    opt = optimizers.Adam(lr=self.hps['lr']
-                                            , beta_1=self.hps['beta_1']
-                                            , beta_2=self.hps['beta_2']
-                                            , decay=self.hps['decay'])
-                    
-                    self.model.compile(optimizer=opt, loss='mse')
-                    #self.model.summary() 
+
+                self.model = Model(inputs=[input_a], outputs = [action_value], name='opt_critic')
+
+                opt = optimizers.Adam(lr=self.hps['lr']
+                                        , beta_1=self.hps['beta_1']
+                                        , beta_2=self.hps['beta_2']
+                                        , decay=self.hps['decay'])
+
+                self.model.compile(optimizer=opt, loss='mse')
+                #self.model.summary()
         
         def train(self, s, a, td_target): # learning rate?
             """Train critic.
@@ -227,18 +201,7 @@ class StyleBasedGANTrainer(Trainer):
                 
             if self.model_loading:
                 with CustomObjectScope({'policy_loss': policy_loss}):
-                    if self.conf['multi_gpu']:
-                        self.model = load_model(os.path.join(self.MODEL_PATH)) # Check exception.
-                            
-                        opt = optimizers.Adam(lr=self.hps['lr']
-                                                , beta_1=self.hps['beta_1']
-                                                , beta_2=self.hps['beta_2']
-                                                , decay=self.hps['decay'])
-                            
-                        self.parallel_model = multi_gpu_model(self.model, gpus = self.conf['num_gpus'])
-                        self.parallel_model.compile(optimizer='adam', loss = policy_loss)
-                    else: 
-                        self.model = load_model(os.path.join(self.MODEL_PATH)) # Check exception.
+                    self.model = load_model(os.path.join(self.MODEL_PATH)) # Check exception.
             else:
                 # Design actor.
                 # Input.
@@ -254,29 +217,15 @@ class StyleBasedGANTrainer(Trainer):
                 input_td_error = Input(shape=(1,))
                 action = Lambda(lambda x: K.log(x))(action) #?
                 action = Lambda(lambda x: -1.0 * x[0] * x[1])([input_td_error, action])
-    
-                if self.conf['multi_gpu']:
-                    self.model = Model(inputs=[input_s, input_td_error], outputs = [action])
-                    opt = optimizers.Adam(lr=self.hps['lr']
-                                            , beta_1=self.hps['beta_1']
-                                            , beta_2=self.hps['beta_2']
-                                            , decay=self.hps['decay'])
-                    
-                    self.model.compile(optimizer='adam', loss = policy_loss)
-                    #self.model.summary()                    
-                        
-                    self.parallel_model = multi_gpu_model(self.model, gpus = self.conf['num_gpus'])
-                    self.parallel_model.compile(optimizer='adam', loss=policy_loss)
-                    #self.parallel_model.summary()
-                else:
-                    self.model = Model(inputs=[input_s, input_td_error], outputs = [action])
-                    opt = optimizers.Adam(lr=self.hps['lr']
-                                            , beta_1=self.hps['beta_1']
-                                            , beta_2=self.hps['beta_2']
-                                            , decay=self.hps['decay'])
-                    
-                    self.model.compile(optimizer='adam', loss=policy_loss)
-                    #self.model.summary()
+
+                self.model = Model(inputs=[input_s, input_td_error], outputs = [action])
+                opt = optimizers.Adam(lr=self.hps['lr']
+                                        , beta_1=self.hps['beta_1']
+                                        , beta_2=self.hps['beta_2']
+                                        , decay=self.hps['decay'])
+
+                self.model.compile(optimizer='adam', loss=policy_loss)
+                #self.model.summary()
             
             self._make_action_model() 
        

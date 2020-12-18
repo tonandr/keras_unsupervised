@@ -19,7 +19,6 @@ import pandas as pd
 
 from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.layers import Input, Dense, Lambda
-from tensorflow.python.keras.utils import multi_gpu_model
 from tensorflow.python.keras import optimizers
 
 from ku.ebm.rbm import RBM 
@@ -45,21 +44,10 @@ class MNISTClassifier(object):
         self.nn_arch = self.conf['nn_arch']
         self.model_loading = self.conf['model_loading']
 
-        if self.model_loading: 
-            if MULTI_GPU:
-                self.digit_classificaton_model = load_model(self.MODEL_PATH, custom_objects={'RBM': RBM})
-                self.rbm = self.digit_classificaton_model.get_layer('rbm_1')
-                
-                self.digit_classificaton_parallel_model = multi_gpu_model(self.model, gpus = NUM_GPUS)
-                opt = optimizers.Adam(lr=self.hps['lr']
-                                        , beta_1=self.hps['beta_1']
-                                        , beta_2=self.hps['beta_2']
-                                        , decay=self.hps['decay']) 
-                self.digit_classificaton_parallel_model.compile(optimizer=opt, loss='mse') 
-            else:
-                self.digit_classificaton_model = load_model(self.MODEL_PATH, custom_objects={'RBM': RBM})
-                self.digit_classificaton_model.summary()
-                self.rbm = self.digit_classificaton_model.get_layer('rbm_1')
+        if self.model_loading:
+            self.digit_classificaton_model = load_model(self.MODEL_PATH, custom_objects={'RBM': RBM})
+            self.digit_classificaton_model.summary()
+            self.rbm = self.digit_classificaton_model.get_layer('rbm_1')
         else:        
             # Design the model.
             input_image = Input(shape=(self.IMAGE_SIZE,))
@@ -96,18 +84,11 @@ class MNISTClassifier(object):
         
         # Supervised learning.
         print('Train the NN model.')
-        if MULTI_GPU:
-            self.digit_classificaton_parallel_model.fit(V
-                                           , gt
-                                           , batch_size=self.hps['batch_size']
-                                           , epochs=self.hps['epochs']
-                                           , verbose=1)        
-        else:
-            self.digit_classificaton_model.fit(V
-                                           , gt
-                                           , batch_size=self.hps['batch_size']
-                                           , epochs=self.hps['epochs']
-                                           , verbose=1)
+        self.digit_classificaton_model.fit(V
+                                       , gt
+                                       , batch_size=self.hps['batch_size']
+                                       , epochs=self.hps['epochs']
+                                       , verbose=1)
 
         print('Save the model.')            
         self.digit_classificaton_model.save(self.MODEL_PATH)
