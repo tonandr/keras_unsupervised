@@ -1,6 +1,6 @@
 {
 	"mode" : "train",
-	"raw_data_path" : "D:\\workspace\\keras_unsupervised\\examples\\style_based_gan\\resource\\thumbnails128x128",
+	"raw_data_path" : "D:\\PycharmProjects\\keras_unsupervised\\examples\\style_based_gan\\resource\\thumbnails128x128",
 	"model_loading" : false,
 	"multi_gpu" : false,
 	"num_gpus" : 4,

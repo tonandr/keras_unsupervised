@@ -3,7 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from tensorflow.python.keras import backend
+from tensorflow.keras import backend as K
+from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.layers import (Layer
     , Dense
     , Add
@@ -162,7 +163,7 @@ class InterferedTransformer(Layer):
         x = inputs[1]
         m = inputs[2]
 
-        num_seq = backend.int_shape(x)[1]
+        num_seq = K.int_shape(x)[1]
         embedded = tf.tile(tf.expand_dims(inputs[0], axis=1), (1, num_seq, 1))
         if self.layer_norm_f:
             embedded = self.layer_norm_embedded(embedded)

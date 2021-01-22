@@ -25,18 +25,18 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda, Embedding, Flatten, Dropout
 from tensorflow.keras.layers import LeakyReLU, Activation, AveragePooling2D, UpSampling2D, Concatenate
-import tensorflow_core.python.keras.backend as K 
+import tensorflow.keras.backend as K
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.utils import plot_model
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras import optimizers
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 
-from tensorflow_core.python.keras.utils.generic_utils import to_list, CustomObjectScope
-from tensorflow_core.python.keras.utils.data_utils import iter_sequence_infinite
-from tensorflow_core.python.keras import callbacks as cbks
-from tensorflow_core.python.keras.engine import training_utils
-from tensorflow.python.keras.utils.mode_keys import ModeKeys #?
+from tensorflow.keras.utils.generic_utils import to_list, CustomObjectScope
+from tensorflow.keras.utils.data_utils import iter_sequence_infinite
+from tensorflow.keras import callbacks as cbks
+from tensorflow.keras.engine import training_utils
+from tensorflow.keras.utils.mode_keys import ModeKeys #?
 
 from ku.engine_ext import ModelExt
 from ku.backprop import AbstractGAN
@@ -44,7 +44,7 @@ from ku.layer_ext import AdaptiveINWithStyle, TruncationTrick, StyleMixingRegula
 from ku.layer_ext import EqualizedLRDense, EqualizedLRConv2D
 from ku.layer_ext import FusedEqualizedLRConv2DTranspose, BlurDepthwiseConv2D, FusedEqualizedLRConv2D
 from ku.layer_ext import MinibatchStddevConcat
-from ku.image_utils import resize_image
+from ku.image_utils import resize
 import ku.backprop.gan as gan
 from ku.backprop.gan import compose_gan_with_mode
 

@@ -25,7 +25,7 @@ from tensorflow.python.ops import math_ops, array_ops
 from tensorflow.python.keras.utils import losses_utils
 
 # Constants.
-EPSILON = 1e-8
+EPSILON = 1e-7
 
 class CategoricalCrossentropyWithLabelGT(LossFunctionWrapper):
     def __init__(self

@@ -33,13 +33,13 @@ STYLE_GAN_WGAN_GP = 1
 STYLE_GAN_SOFTPLUS_INVERSE_R1_GP = 2
 LSGAN = 3
 PIX2PIX_GAN = 4
-CYCLE_GAN = 5
 
 # Loss configuration type.
 LOSS_CONF_TYPE_NON_SATURATION_REGULAR = 0
 LOSS_CONF_TYPE_WGAN_GP = 1
 LOSS_CONF_TYPE_NON_SATURATION_SOFTPLUS_R1_GP = 2
 LOSS_CONF_TYPE_LS = 3
+
 
 def get_loss_conf(hps, lc_type, *args, **kwargs):
     """Get the GAN loss configuration.
@@ -91,6 +91,7 @@ def get_loss_conf(hps, lc_type, *args, **kwargs):
 
     return loss_conf
 
+
 class AbstractGAN(ABC):
     """Abstract generative adversarial network."""
 
@@ -112,22 +113,15 @@ class AbstractGAN(ABC):
                 raise RuntimeError('Before models, custom_objects must be created.')
                                                           
             self.custom_objects['ModelExt'] = ModelExt                                                          
-            with CustomObjectScope(self.custom_objects):
-                # disc_ext.
-                '''
-                self.disc_ext = load_model(self.DISC_EXT_PATH
-                                           , custom_objects=self.custom_objects
-                                           , compile=False) #?
-                '''
-                 
-                # gen_disc.
-                self.gen_disc = load_model(self.GEN_DISC_PATH
-                                           , custom_objects=self.custom_objects
-                                           , compile=False) #?
-                                        
-                # gen, disc.
-                self.gen = self.gen_disc.get_layer('gen')
-                self.disc = self.gen_disc.get_layer('disc')
+
+            # gen_disc.
+            self.gen_disc = load_model(self.GEN_DISC_PATH
+                                       , custom_objects=self.custom_objects
+                                       , compile=False) #?
+
+            # gen, disc.
+            self.gen = self.gen_disc.get_layer('gen')
+            self.disc = self.gen_disc.get_layer('disc')
 
     @property
     def is_gan_compiled(self):
@@ -1191,7 +1185,8 @@ class AbstractGAN(ABC):
         """
         inputs = inputs if isinstance(inputs, (list, tuple)) else [inputs]
         return self.gen.predict(inputs)
-    
+
+
 def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
     """Compose the GAN model with mode.
     
@@ -1266,7 +1261,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc_ext = ModelExt(inputs=x_inputs + z_inputs + x3_inputs
                             , outputs=x_outputs + x2_outputs + x3_outputs
                             , name='disc_ext')
-
+                
         # Compose gen_disc.
         z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
@@ -1344,7 +1339,7 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         disc_ext = ModelExt(inputs=x_inputs + z_inputs + cond_inputs
                             , outputs=x_outputs + x2_outputs
                             , name='disc_ext')
-
+                
         # Compose gen_disc.
         z_inputs = [tf.keras.Input(shape=K.int_shape(t)[1:], dtype=t.dtype) for t in gen.inputs] 
         
@@ -1365,9 +1360,6 @@ def compose_gan_with_mode(gen, disc, mode, multi_gpu=False, num_gpus=1):
         gen_disc = ModelExt(inputs=z_inputs + cond_inputs
                             , outputs=z_p_outputs + z_outputs 
                             , name='gen_disc')
-    elif mode == CYCLE_GAN:
-        # TODO
-        pass
     else:
         ValueError('mode is not valid.')
     
