@@ -76,7 +76,7 @@ setup(
                       , 'scikit-image'
                       , 'matplotlib'
                       , 'opencv-contrib-python'
-                      , 'cupy-cuda102'],  # Optional
+                      , 'cupy-cuda110'],  # Optional
 
     # Specify which Python versions you support. In contrast to the
     # 'Programming Language' classifiers above, 'pip install' will check this
