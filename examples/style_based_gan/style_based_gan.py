@@ -32,11 +32,19 @@ from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras import optimizers
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 
+from tensorflow.python.keras.utils.generic_utils import to_list, CustomObjectScope
+from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
+from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.utils.mode_keys import ModeKeys #?
+
+''' TF 2.4.
 from tensorflow.keras.utils.generic_utils import to_list, CustomObjectScope
 from tensorflow.keras.utils.data_utils import iter_sequence_infinite
 from tensorflow.keras import callbacks as cbks
 from tensorflow.keras.engine import training_utils
 from tensorflow.keras.utils.mode_keys import ModeKeys #?
+'''
 
 from ku.engine_ext import ModelExt
 from ku.backprop import AbstractGAN
@@ -127,7 +135,7 @@ class StyleGAN(AbstractGAN):
                            , 'BlurDepthwiseConv2D': BlurDepthwiseConv2D
                            , 'FusedEqualizedLRConv2D': FusedEqualizedLRConv2D
                            , "MinibatchStddevConcat": MinibatchStddevConcat
-                           , 'resize_image': resize_image}
+                           , 'resize': resize}
       
         super(StyleGAN, self).__init__(conf) #?
         
@@ -666,8 +674,8 @@ class StyleGAN(AbstractGAN):
                  
             # Callbacks.            
             # disc_ext.
-            out_labels_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
-            out_labels_disc_ext = ['loss'] + [v.name for v in self.disc_ext.loss_functions]
+            #out_labels_disc_ext = self.disc_ext.metrics_names if hasattr(self.disc_ext, 'metrics_names') else []
+            #out_labels_disc_ext = ['loss'] + [v.name for v in self.disc_ext.loss_functions]
             #self.disc_ext.history = cbks.History()
             _callbacks = [] #cbks.BaseLogger(stateful_metrics=[])]
             
@@ -699,8 +707,8 @@ class StyleGAN(AbstractGAN):
             progbar_disc_ext.params['verbose'] = verbose  
           
             # gen_disc.
-            out_labels_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
-            out_labels_gen_disc = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
+            #out_labels_gen_disc = self.gen_disc.metrics_names if hasattr(self.gen_disc, 'metrics_names') else []
+            #out_labels_gen_disc = ['loss'] + [v.name for v in self.gen_disc.loss_functions]
             #self.gen_disc.history = cbks.History()
             _callbacks = [] #cbks.BaseLogger(stateful_metrics=[])]
             
@@ -739,7 +747,7 @@ class StyleGAN(AbstractGAN):
             progbar_disc_ext.on_train_begin()
             progbar_gen_disc.on_train_begin()
                         
-            initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(initial_epoch, ModeKeys.TRAIN) #?                                  
+            #initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(initial_epoch, ModeKeys.TRAIN) #?
             
             pre_e_i = -1
             for e_i in range(initial_epoch, self.hps['epochs']):
@@ -1441,7 +1449,7 @@ class StyleGAN(AbstractGAN):
                 for bi in idxes:
                     image = imread(self.sample_paths[bi])                    
                     image = 2.0 * (image / 255. - 0.5)
-                    image = resize_image(image, self.res)
+                    image = resize(image, (self.res, self.res))
                     
                     images.append(image)
                     
@@ -1456,7 +1464,7 @@ class StyleGAN(AbstractGAN):
                     for bi in range(index * self.batch_size, self.total_samples):
                         image = imread(self.sample_paths[bi])                    
                         image = 2.0 * (image / 255. - 0.5)
-                        image = resize_image(image, self.res)
+                        image = resize(image, (self.res, self.res))
                         
                         images.append(image)
                         
@@ -1468,7 +1476,7 @@ class StyleGAN(AbstractGAN):
                     for bi in range(index * self.batch_size, (index + 1) * self.batch_size):
                         image = imread(self.sample_paths[bi])                    
                         image = 2.0 * (image / 255. - 0.5)
-                        image = resize_image(image, self.res)
+                        image = resize(image, (self.res, self.res))
                         
                         images.append(image)
                         
@@ -1534,7 +1542,7 @@ class StyleGAN(AbstractGAN):
                                                      , 'subject_faces'
                                                      , self.db.loc[bi, 'face_file']))                    
                     image = 2.0 * (image / 255. - 0.5)
-                    image = resize_image(image, self.res)
+                    image = resize(image, self.res)
                     
                     images.append(image)
                     labels.append(self.db.loc[bi, 'subject_id'])                
@@ -1546,7 +1554,7 @@ class StyleGAN(AbstractGAN):
                                                          , 'subject_faces'
                                                          , self.db.loc[bi, 'face_file']))
                         image = 2.0 * (image / 255. - 0.5)
-                        image = resize_image(image, self.res)
+                        image = resize(image, (self.res, self.res))
                         
                         images.append(image)
                         labels.append(self.db.loc[bi, 'subject_id'])
@@ -1556,7 +1564,7 @@ class StyleGAN(AbstractGAN):
                                                          , 'subject_faces'
                                                          , self.db.loc[bi, 'face_file']))
                         image = 2.0 * (image / 255. - 0.5)
-                        image = resize_image(image, self.res)
+                        image = resize(image, (self.res, self.res))
                         
                         images.append(image)
                         labels.append(self.db.loc[bi, 'subject_id'])               
