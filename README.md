@@ -14,4 +14,4 @@ On Keras, to develop semi-supervised learning and unsupervised learning via back
 
 ## Tasks status
 
-[GAN and Style-based GAN are tested and optimized.](https://github.com/tonandr/keras_unsupervised/tree/master/examples/style_based_gan)
+[GAN and Autoencoder are being tested.](https://github.com/tonandr/keras_unsupervised/tree/master/examples/style_based_gan)
