@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
+import tensorflow as tf
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import constraints
@@ -304,7 +305,7 @@ class _FusedEqualizedLRConv(Conv):
         
         self.kernel_initializer = initializers.TruncatedNormal(mean=0.0, stddev=init_std)
         super(_FusedEqualizedLRConv, self).build(input_shape)
-        
+
     def call(self, inputs): #?
         scaled_kernel = self.kernel * self.runtime_coeff
         

@@ -16,6 +16,7 @@ from tensorflow.python.keras.layers import core as core_ops
 
 from ..backend_ext import tensorflow_backend as Ke
 
+
 class EqualizedLRDense(Dense):
     """Equalized learning rate dense layer."""
     

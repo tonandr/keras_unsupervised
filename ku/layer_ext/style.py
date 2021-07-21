@@ -12,6 +12,7 @@ import tensorflow.keras.initializers as initializers
 
 from ku.backend_ext import tensorflow_backend as Ke
 
+
 class StyleMixingRegularization(_Merge): #?
     """Style mixing regularization layer."""
 
@@ -55,7 +56,8 @@ class StyleMixingRegularization(_Merge): #?
         config = {'mixing_prob': self.mixing_prob}
         base_config = super(StyleMixingRegularization, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-   
+
+
 class TruncationTrick(Layer): #?
     """Truncation trick layer."""
 
@@ -124,6 +126,7 @@ class TruncationTrick(Layer): #?
 
     def compute_output_shape(self, input_shape):
         return input_shape
+
 
 class MinibatchStddevConcat(Layer): #?
     """Minibatch standard deviation map concatenation layer."""

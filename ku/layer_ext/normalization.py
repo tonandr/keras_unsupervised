@@ -2,9 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tensorflow as tf
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.layers import Layer, InputSpec
 from tensorflow.python.keras.layers.merge import _Merge
+
 
 class AdaptiveINWithStyle(Layer):
     """Adaptive instance normalization layer with the image and disentangled latent tensors."""
@@ -23,7 +25,7 @@ class AdaptiveINWithStyle(Layer):
         if len(input_shape) != 2:
             raise ValueError('A `AdaptiveINWithStyle` layer should be called '
                              'on exactly 2 inputs')
-            
+
     def call(self, inputs):
         # Check exception.
         x = inputs
@@ -56,6 +58,7 @@ class AdaptiveINWithStyle(Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape
+
 
 class AdaptiveIN(_Merge):
     """Adaptive instance normalization layer."""

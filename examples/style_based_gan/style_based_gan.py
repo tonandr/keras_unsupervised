@@ -15,6 +15,7 @@ import json
 import glob
 import shutil
 import warnings
+import copy
 
 import numpy as np
 import pandas as pd
@@ -32,6 +33,7 @@ from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras import optimizers
 from tensorflow.keras.utils import Sequence, GeneratorEnqueuer, OrderedEnqueuer
 
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.profiler import trace
 from tensorflow.python.keras.utils.generic_utils import to_list, CustomObjectScope
 from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
@@ -203,9 +205,9 @@ class StyleGAN(AbstractGAN):
 
         # Style mixing regularization.
         if self.nn_arch['label_usage']:
-            inputs2 = [Input(shape=K.int_shape(inputs1[0])[1:]), inputs1[1]] # Normal random input.
+            inputs2 = [Input(shape=K.int_shape(inputs1[0])[1:], dtype='float32'), inputs1[1]] # Normal random input.
         else:
-            inputs2 = Input(shape=K.int_shape(inputs1[0])[1:]) # Normal random input.
+            inputs2 = Input(shape=K.int_shape(inputs1[0])[1:], dtype='float32') # Normal random input.
         
         dlatents2 = self.map(inputs2)
         
@@ -337,7 +339,7 @@ class StyleGAN(AbstractGAN):
                 
         # Design mapping network.
         # Inputs.
-        noises = Input(shape=(self.map_nn_arch['latent_dim'], ))
+        noises = Input(shape=(self.map_nn_arch['latent_dim'], ), dtype='float32')
         x = noises
         
         if self.nn_arch['label_usage']:
@@ -375,7 +377,7 @@ class StyleGAN(AbstractGAN):
         res_log2 = int(np.log2(res))
         assert res == 2 ** res_log2 and res >= 4 #?
 
-        images = Input(shape=(res, res, 3))
+        images = Input(shape=(res, res, 3), dtype='float32')
         
         if self.nn_arch['label_usage']:
             labels = Input(shape=(1, ), dtype='float32')
@@ -455,7 +457,7 @@ class StyleGAN(AbstractGAN):
         # x_tilda.
         if self.nn_arch['label_usage']:
             z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
-                + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))] \
+                + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1)).astype('float32')] \
                 + [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
         else:
             z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
@@ -496,7 +498,7 @@ class StyleGAN(AbstractGAN):
         # x_tilda.
         if self.nn_arch['label_usage']:
             z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
-                + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1))] \
+                + [np.random.randint(self.map_nn_arch['num_classes'], size=(num_samples, 1)).astype('float32')] \
                 + [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))]
         else:
             z_inputs_b = [np.random.normal(size=(num_samples, self.map_nn_arch['latent_dim']))] \
@@ -708,9 +710,9 @@ class StyleGAN(AbstractGAN):
                 callbacks_gen_disc = callbacks_gen_disc_raw
 
             # Train.
-            self.disc_ext.model.stop_training = False
+            self.disc_ext.stop_training = False
             self.disc_ext._train_counter.assign(0)
-            self.gen_disc.model.stop_training = False
+            self.gen_disc.stop_training = False
             self.gen_disc._train_counter.assign(0)
             disc_ext_training_logs = None
             gen_disc_training_logs = None
@@ -736,7 +738,7 @@ class StyleGAN(AbstractGAN):
 
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
-                        step = self.hps['disc_k_step'] * s_i + k_i + 1 #?
+                        step = self.hps['disc_k_step'] * s_i + k_i - 1 #?
                         with trace.Trace('TraceContext'
                                          , graph_type='train'
                                          , epoch_num=e_i
@@ -755,13 +757,14 @@ class StyleGAN(AbstractGAN):
                             disc_ext_step_logs = self.disc_ext.train_on_batch(inputs
                                     , outputs
                                     , class_weight=class_weight
-                                    , reset_metrics=False) #?
+                                    , reset_metrics=False
+                                    , return_dict=True) #?
                             del inputs, outputs
 
                             end_step = step + 1
                             callbacks_disc_ext.on_train_batch_end(end_step, disc_ext_step_logs)
 
-                    step = s_i + 1 #?
+                    step = s_i - 1 #?
                     with trace.Trace('TraceContext'
                             , graph_type='train'
                             , epoch_num=e_i
@@ -779,7 +782,8 @@ class StyleGAN(AbstractGAN):
                         gen_disc_step_logs = self.gen_disc.train_on_batch(inputs
                                                             , outputs
                                                             , class_weight=class_weight
-                                                            , reset_metrics=False)
+                                                            , reset_metrics=False
+                                                            , return_dict=True)
                         del inputs, outputs
 
                         end_step = step + 1
@@ -795,25 +799,25 @@ class StyleGAN(AbstractGAN):
                         val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
                                                                       , val_generator #?
                                                                       , gen_disc_ext_data_fun
-                                                                      , callbacks=None #callbacks_disc_ext
-                                                                      , workers=0
-                                                                      , verbose=0)
+                                                                      , callbacks_raw=None #callbacks_disc_ext
+                                                                      , workers=1
+                                                                      , verbose=1)
                         
                         # gen_disc.
                         val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
                                                                       , val_generator
                                                                       , gen_gen_disc_data_fun
-                                                                      , callbacks=None #callbacks_gen_disc
-                                                                      , workers=0
-                                                                      , verbose=0)                                            
+                                                                      , callbacks_raw=None #callbacks_gen_disc
+                                                                      , workers=1
+                                                                      , verbose=1)
                         # Make epochs logs.
                         epochs_log_disc_ext.update(val_outs_disc_ext)
                         epochs_log_gen_disc.update(val_outs_gen_disc)
                                                                 
-                callbacks_disc_ext.on_epoch_end(e_i, disc_ext_epoch_log)
-                callbacks_gen_disc.on_epoch_end(e_i, gen_disc_epoch_log)
-                disc_ext_training_logs = disc_ext_epoch_logs
-                gen_disc_training_logs = gen_disc_epoch_logs
+                callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
+                disc_ext_training_logs = epochs_log_disc_ext
+                gen_disc_training_logs = epochs_log_gen_disc
 
                 if save_f:
                     self.save_gan_model()
@@ -832,7 +836,7 @@ class StyleGAN(AbstractGAN):
                 
                 pre_e_i = e_i
 
-            callbacks_disc_ext.on_train_end(logs=disc_ext_training_logs) # progress bar?
+            callbacks_disc_ext.on_train_end(logs=disc_ext_training_logs)
             callbacks_gen_disc.on_train_end(logs=gen_disc_training_logs)
         finally:
             try:
@@ -1044,7 +1048,7 @@ class StyleGAN(AbstractGAN):
                 
                 for s_i in range(self.hps['batch_step']):
                     for k_i in range(self.hps['disc_k_step']):
-                        step = self.hps['disc_k_step'] * s_i + k_i + 1  # ?
+                        step = self.hps['disc_k_step'] * s_i + k_i - 1# ?
                         with trace.Trace('TraceContext'
                                 , graph_type='train'
                                 , epoch_num=e_i
@@ -1063,13 +1067,14 @@ class StyleGAN(AbstractGAN):
                             disc_ext_step_logs = partial_disc_ext.train_on_batch(inputs
                                                                               , outputs
                                                                               , class_weight=class_weight
-                                                                              , reset_metrics=False)  # ?
+                                                                              , reset_metrics=False
+                                                                              , return_dict=True)  # ?
                             del inputs, outputs
 
                             end_step = step + 1
                             callbacks_disc_ext.on_train_batch_end(end_step, disc_ext_step_logs)
 
-                    step = s_i + 1  # ?
+                    step = s_i - 1# ?
                     with trace.Trace('TraceContext'
                             , graph_type='train'
                             , epoch_num=e_i
@@ -1087,7 +1092,8 @@ class StyleGAN(AbstractGAN):
                         gen_disc_step_logs = partial_gen_disc.train_on_batch(inputs
                                                                           , outputs
                                                                           , class_weight=class_weight
-                                                                          , reset_metrics=False)
+                                                                          , reset_metrics=False
+                                                                          , return_dict=True)
                         del inputs, outputs
 
                         end_step = step + 1
@@ -1103,25 +1109,25 @@ class StyleGAN(AbstractGAN):
                         val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
                                                                     , val_generator  # ?
                                                                     , gen_disc_ext_data_fun
-                                                                    , callbacks=None  # callbacks_disc_ext
-                                                                    , workers=0
-                                                                    , verbose=0)
+                                                                    , callbacks_raw=None  # callbacks_disc_ext
+                                                                    , workers=1
+                                                                    , verbose=1)
 
                         # gen_disc.
                         val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
                                                                     , val_generator
                                                                     , gen_gen_disc_data_fun
-                                                                    , callbacks=None  # callbacks_gen_disc
-                                                                    , workers=0
-                                                                    , verbose=0)
+                                                                    , callbacks_raw=None  # callbacks_gen_disc
+                                                                    , workers=1
+                                                                    , verbose=1)
                         # Make epochs logs.
                         epochs_log_disc_ext.update(val_outs_disc_ext)
                         epochs_log_gen_disc.update(val_outs_gen_disc)
 
-                callbacks_disc_ext.on_epoch_end(e_i, disc_ext_epoch_log)
-                callbacks_gen_disc.on_epoch_end(e_i, gen_disc_epoch_log)
-                disc_ext_training_logs = disc_ext_epoch_logs
-                gen_disc_training_logs = gen_disc_epoch_logs
+                callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
+                disc_ext_training_logs = epochs_log_disc_ext
+                gen_disc_training_logs = epochs_log_gen_disc
 
                 if save_f:
                     self.save_gan_model()
@@ -1219,9 +1225,10 @@ class StyleGAN(AbstractGAN):
         callbacks.on_test_begin()
         disc_ext.reset_metrics()
 
-        for k_i in range(self.hps['batch_step']):
-            with trace.Trace('TraceContext', graph_type='test', step_num=(k_i * self.hps['batch_step'] + 1)):
-                callbacks.on_test_batch_begin(k_i * self.hps['batch_step' + 1])
+        for k_i in range(self.hps['batch_step']): #?
+            step = k_i - 1
+            with trace.Trace('TraceContext', graph_type='test', step_num=step):
+                callbacks.on_test_batch_begin(step)
 
                 inputs, outputs = gen_disc_ext_data_func(generator)
                 tmp_logs = disc_ext.test_on_batch(inputs
@@ -1244,7 +1251,7 @@ class StyleGAN(AbstractGAN):
                            , generator
                            , gen_gen_disc_data_func
                            , verbose=1
-                           , callbacks=None
+                           , callbacks_raw=None
                            , max_queue_size=10
                            , workers=1
                            , use_multiprocessing=False):
@@ -1307,11 +1314,12 @@ class StyleGAN(AbstractGAN):
         gen_disc.reset_metrics()
 
         for s_i in range(self.hps['batch_step']):
-            with trace.Trace('TraceContext', graph_type='test', step_num=(s_i + 1)):
-                callbacks.on_test_batch_begin(s_i + 1)
+            step = s_i - 1
+            with trace.Trace('TraceContext', graph_type='test', step_num=step):
+                callbacks.on_test_batch_begin(s_i)
 
                 inputs, outputs = gen_gen_disc_data_func(generator)
-                tmp_logs = disc_ext.test_on_batch(inputs
+                tmp_logs = gen_disc.test_on_batch(inputs
                                                   , outputs
                                                   , reset_metrics=False
                                                   , return_dict=True)

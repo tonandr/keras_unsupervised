@@ -23,6 +23,7 @@ class OrdinalPositionEncoding(Layer):
         pos = tf.range(1, self.num_total_seq + 1) / self.num_total_seq
         self.pos = tf.expand_dims(tf.expand_dims(pos, axis=-1), axis=0)
 
+    @tf.autograph.experimental.do_not_convert
     def call(self, inputs):
         # Check exception.
         x = inputs
