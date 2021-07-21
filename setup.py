@@ -43,6 +43,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6'
         'Programming Language :: Python :: 3.7'
+        'Programming Language :: Python :: 3.8'
     ],
 
     # This field adds keywords for your project which will appear on the
@@ -79,7 +80,7 @@ setup(
     # and refuse to install the project if the version does not match. If you
     # do not support Python 2, you can simplify this to '>=3.5' or similar, see
     # https://packaging.python.org/guides/distributing-packages-using-setuptools/#python-requires
-    python_requires='>=3.6, <3.8',
+    python_requires='>=3.6, <=3.8',
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"
