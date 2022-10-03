@@ -222,586 +222,586 @@ class AbstractGAN(ABC):
         """
         raise NotImplementedError('gen_gen_disc_data_fun is not implemented.')
 
-        def fit_generator(self
-                          , generator
-                          , gen_disc_ext_data_fun
-                          , gen_gen_disc_data_fun
-                          , verbose=1
-                          , callbacks_disc_ext_raw=None
-                          , callbacks_gen_disc_raw=None
-                          , validation_data_gen=None  # ?
-                          , validation_steps=None
-                          , validation_freq=1  # ?
-                          , class_weight=None  # ?
-                          , max_queue_size=10
-                          , workers=1
-                          , use_multiprocessing=False  # ?
-                          , shuffle=True
-                          , initial_epoch=0
-                          , save_f=True):  # ?
-            """Train the GAN model with the generator.
+    def fit_generator(self
+                      , generator
+                      , gen_disc_ext_data_fun
+                      , gen_gen_disc_data_fun
+                      , verbose=1
+                      , callbacks_disc_ext_raw=None
+                      , callbacks_gen_disc_raw=None
+                      , validation_data_gen=None  # ?
+                      , validation_steps=None
+                      , validation_freq=1  # ?
+                      , class_weight=None  # ?
+                      , max_queue_size=10
+                      , workers=1
+                      , use_multiprocessing=False  # ?
+                      , shuffle=True
+                      , initial_epoch=0
+                      , save_f=True):  # ?
+        """Train the GAN model with the generator.
 
-            Parameters
-            ----------
-            generator: Generator.
-                Training data generator.
-            gen_disc_ext_data_fun: Function.
-                Data generating function for disc_ext.
-            gen_gen_disc_data_fun: Function.
-                Data generating function for gen_disc.
-            verbose: Integer.
-                Verbose mode (default=1).
-            callback_disc_ext_raw: list.
-                disc_ext callbacks (default=None).
-            callback_gen_disc_raw: list.
-                gen_disc callbacks (default=None).
-            validation_data_gen: Generator or Sequence.
-                Validation generator or sequence (default=None).
-            validation_steps: Integer.
-                Validation steps (default=None).
-            validation_freq: Integer.
-                Validation frequency (default=1).
-            class_weight: Numpy array. ?
-                Class weight (default=None).
-            max_queue_size: Integer.
-                Maximum size for the generator queue (default: 10).
-            workers: Integer.
-                Maximum number of processes to get samples (default: 1, 0: main thread).
-            use_multiprocessing: Boolean.
-                Multi-processing flag (default: False).
-            shuffle: Boolean.
-                Batch shuffling flag (default: True).
-            initial_epoch: Integer.
-                Initial epoch (default: 0).
-            save_f: Boolean.
-                Model saving flag (default: True).
+        Parameters
+        ----------
+        generator: Generator.
+            Training data generator.
+        gen_disc_ext_data_fun: Function.
+            Data generating function for disc_ext.
+        gen_gen_disc_data_fun: Function.
+            Data generating function for gen_disc.
+        verbose: Integer.
+            Verbose mode (default=1).
+        callback_disc_ext_raw: list.
+            disc_ext callbacks (default=None).
+        callback_gen_disc_raw: list.
+            gen_disc callbacks (default=None).
+        validation_data_gen: Generator or Sequence.
+            Validation generator or sequence (default=None).
+        validation_steps: Integer.
+            Validation steps (default=None).
+        validation_freq: Integer.
+            Validation frequency (default=1).
+        class_weight: Numpy array. ?
+            Class weight (default=None).
+        max_queue_size: Integer.
+            Maximum size for the generator queue (default: 10).
+        workers: Integer.
+            Maximum number of processes to get samples (default: 1, 0: main thread).
+        use_multiprocessing: Boolean.
+            Multi-processing flag (default: False).
+        shuffle: Boolean.
+            Batch shuffling flag (default: True).
+        initial_epoch: Integer.
+            Initial epoch (default: 0).
+        save_f: Boolean.
+            Model saving flag (default: True).
 
-            Returns
-            -------
-            Training history.
-                Tuple.
-            """
+        Returns
+        -------
+        Training history.
+            Tuple.
+        """
 
-            '''
-            _keras_api_gauge.get_cell('fit').set(True)
-            # Legacy graph support is contained in `training_v1.Model`.
-            version_utils.disallow_legacy_graph('Model', 'fit')
-            self._assert_compile_was_called()
-            self._check_call_args('fit')
-            _disallow_inside_tf_function('fit')
-            '''
+        '''
+        _keras_api_gauge.get_cell('fit').set(True)
+        # Legacy graph support is contained in `training_v1.Model`.
+        version_utils.disallow_legacy_graph('Model', 'fit')
+        self._assert_compile_was_called()
+        self._check_call_args('fit')
+        _disallow_inside_tf_function('fit')
+        '''
 
-            # Check exception.
-            do_validation = bool(validation_data_gen)
+        # Check exception.
+        do_validation = bool(validation_data_gen)
+        if do_validation:
+            assert hasattr(validation_data_gen, 'next') or \
+                   hasattr(validation_data_gen, '__next') or \
+                   isinstance(validation_data_gen, Sequence)
+
+            if not isinstance(validation_data_gen, Sequence):
+                assert validation_steps  # ?
+
+            assert isinstance(validation_freq, int)
+
+        if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
+            warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
+
+        # Initialize the results directory
+        if not os.path.isdir(os.path.join('results')):
+            os.mkdir(os.path.join('results'))
+        else:
+            shutil.rmtree(os.path.join('results'))
+            os.mkdir(os.path.join('results'))
+
+        enq = None
+        val_enq = None
+        try:
+            # Get the validation generator and output generator.
             if do_validation:
-                assert hasattr(validation_data_gen, 'next') or \
-                       hasattr(validation_data_gen, '__next') or \
-                       isinstance(validation_data_gen, Sequence)
-
-                if not isinstance(validation_data_gen, Sequence):
-                    assert validation_steps  # ?
-
-                assert isinstance(validation_freq, int)
-
-            if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
-                warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
-
-            # Initialize the results directory
-            if not os.path.isdir(os.path.join('results')):
-                os.mkdir(os.path.join('results'))
-            else:
-                shutil.rmtree(os.path.join('results'))
-                os.mkdir(os.path.join('results'))
-
-            enq = None
-            val_enq = None
-            try:
-                # Get the validation generator and output generator.
-                if do_validation:
-                    if workers > 0:
-                        if isinstance(validation_data_gen, Sequence):
-                            val_enq = OrderedEnqueuer(validation_data_gen
-                                                      , use_multiprocessing=use_multiprocessing)  # shuffle?
-                            validation_steps = validation_steps or len(validation_data_gen)
-                        else:
-                            val_enq = GeneratorEnqueuer(validation_data_gen
-                                                        , use_multiprocessing=use_multiprocessing)
-
-                        val_enq.start(workers=workers, max_queue_size=max_queue_size)
-                        val_generator = val_enq.get()
-                    else:
-                        if isinstance(validation_data_gen, Sequence):
-                            val_generator = iter_sequence_infinite(validation_data_gen)
-                            validation_steps = validation_steps or len(validation_data_gen)
-                        else:
-                            val_generator = validation_data_gen
-
                 if workers > 0:
-                    if isinstance(generator, Sequence):
-                        enq = OrderedEnqueuer(generator
-                                              , use_multiprocessing=use_multiprocessing
-                                              , shuffle=shuffle)
+                    if isinstance(validation_data_gen, Sequence):
+                        val_enq = OrderedEnqueuer(validation_data_gen
+                                                  , use_multiprocessing=use_multiprocessing)  # shuffle?
+                        validation_steps = validation_steps or len(validation_data_gen)
                     else:
-                        enq = GeneratorEnqueuer(generator
-                                                , use_multiprocessing=use_multiprocessing)
+                        val_enq = GeneratorEnqueuer(validation_data_gen
+                                                    , use_multiprocessing=use_multiprocessing)
 
-                    enq.start(workers=workers, max_queue_size=max_queue_size)
-                    output_generator = enq.get()
+                    val_enq.start(workers=workers, max_queue_size=max_queue_size)
+                    val_generator = val_enq.get()
                 else:
-                    if isinstance(generator, Sequence):
-                        output_generator = iter_sequence_infinite(generator)
+                    if isinstance(validation_data_gen, Sequence):
+                        val_generator = iter_sequence_infinite(validation_data_gen)
+                        validation_steps = validation_steps or len(validation_data_gen)
                     else:
-                        output_generator = generator
+                        val_generator = validation_data_gen
 
-                # Callbacks.
-                # disc_ext.
-                if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
-                    callbacks_disc_ext = cbks.CallbackList(callbacks_disc_ext_raw
-                                                           , add_history=True
-                                                           , add_progbar=verbose != 0
-                                                           , model=self.disc_ext
-                                                           , verbose=verbose
-                                                           , epochs=self.hps['epochs']
-                                                           , steps=self.hps['batch_step'] * self.hps['disc_k_step'])
+            if workers > 0:
+                if isinstance(generator, Sequence):
+                    enq = OrderedEnqueuer(generator
+                                          , use_multiprocessing=use_multiprocessing
+                                          , shuffle=shuffle)
                 else:
-                    callbacks_disc_ext = callbacks_disc_ext_raw
+                    enq = GeneratorEnqueuer(generator
+                                            , use_multiprocessing=use_multiprocessing)
 
-                # gen_disc.
-                if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
-                    callbacks_gen_disc = cbks.CallbackList(callbacks_gen_disc_raw
-                                                           , add_history=True
-                                                           , add_progbar=verbose != 0
-                                                           , model=self.gen_disc
-                                                           , verbose=verbose
-                                                           , epochs=self.hps['epochs']
-                                                           , steps=self.hps['batch_step'])
+                enq.start(workers=workers, max_queue_size=max_queue_size)
+                output_generator = enq.get()
+            else:
+                if isinstance(generator, Sequence):
+                    output_generator = iter_sequence_infinite(generator)
                 else:
-                    callbacks_gen_disc = callbacks_gen_disc_raw
+                    output_generator = generator
 
-                # Train.
-                self.disc_ext.stop_training = False
-                self.disc_ext._train_counter.assign(0)
-                self.gen_disc.stop_training = False
-                self.gen_disc._train_counter.assign(0)
-                disc_ext_training_logs = None
-                gen_disc_training_logs = None
+            # Callbacks.
+            # disc_ext.
+            if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
+                callbacks_disc_ext = cbks.CallbackList(callbacks_disc_ext_raw
+                                                       , add_history=True
+                                                       , add_progbar=verbose != 0
+                                                       , model=self.disc_ext
+                                                       , verbose=verbose
+                                                       , epochs=self.hps['epochs']
+                                                       , steps=self.hps['batch_step'] * self.hps['disc_k_step'])
+            else:
+                callbacks_disc_ext = callbacks_disc_ext_raw
 
-                callbacks_disc_ext.on_train_begin()
-                callbacks_gen_disc.on_train_begin()
+            # gen_disc.
+            if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
+                callbacks_gen_disc = cbks.CallbackList(callbacks_gen_disc_raw
+                                                       , add_history=True
+                                                       , add_progbar=verbose != 0
+                                                       , model=self.gen_disc
+                                                       , verbose=verbose
+                                                       , epochs=self.hps['epochs']
+                                                       , steps=self.hps['batch_step'])
+            else:
+                callbacks_gen_disc = callbacks_gen_disc_raw
 
-                initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(initial_epoch)  # ?
+            # Train.
+            self.disc_ext.stop_training = False
+            self.disc_ext._train_counter.assign(0)
+            self.gen_disc.stop_training = False
+            self.gen_disc._train_counter.assign(0)
+            disc_ext_training_logs = None
+            gen_disc_training_logs = None
 
-                pre_e_i = -1
-                for e_i in range(initial_epoch, self.hps['epochs']):
-                    if callbacks_disc_ext.model.stop_training or callbacks_gen_disc.model.stop_training:
-                        break
+            callbacks_disc_ext.on_train_begin()
+            callbacks_gen_disc.on_train_begin()
 
-                    self.disc_ext.reset_metrics()  # ?
-                    self.gen_disc.reset_metrics()
+            initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(initial_epoch)  # ?
 
-                    epochs_log_disc_ext = {}
-                    epochs_log_gen_disc = {}
+            pre_e_i = -1
+            for e_i in range(initial_epoch, self.hps['epochs']):
+                if callbacks_disc_ext.model.stop_training or callbacks_gen_disc.model.stop_training:
+                    break
 
-                    callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
-                    callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
+                self.disc_ext.reset_metrics()  # ?
+                self.gen_disc.reset_metrics()
 
-                    for s_i in range(self.hps['batch_step']):
-                        for k_i in range(self.hps['disc_k_step']):
-                            step = self.hps['disc_k_step'] * s_i + k_i - 1  # ?
-                            with trace.Trace('TraceContext'
-                                    , graph_type='train'
-                                    , epoch_num=e_i
-                                    , step_num=step
-                                    , batch_size=self.hps['batch_size']):
-                                callbacks_disc_ext.on_train_batch_begin(step)
+                epochs_log_disc_ext = {}
+                epochs_log_gen_disc = {}
 
-                                inputs, outputs = gen_disc_ext_data_fun(output_generator)
+                callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
 
-                                self.gen.trainable = False
-                                for layer in self.gen.layers: layer.trainable = False
-
-                                self.disc.trainable = True
-                                for layer in self.disc.layers: layer.trainable = True
-
-                                disc_ext_step_logs = self.disc_ext.train_on_batch(inputs
-                                                                                  , outputs
-                                                                                  , class_weight=class_weight
-                                                                                  , reset_metrics=False
-                                                                                  , return_dict=True)  # ?
-                                del inputs, outputs
-
-                                end_step = step + 1
-                                callbacks_disc_ext.on_train_batch_end(end_step, disc_ext_step_logs)
-
-                        step = s_i - 1  # ?
+                for s_i in range(self.hps['batch_step']):
+                    for k_i in range(self.hps['disc_k_step']):
+                        step = self.hps['disc_k_step'] * s_i + k_i - 1  # ?
                         with trace.Trace('TraceContext'
                                 , graph_type='train'
                                 , epoch_num=e_i
                                 , step_num=step
                                 , batch_size=self.hps['batch_size']):
+                            callbacks_disc_ext.on_train_batch_begin(step)
 
-                            inputs, outputs = gen_gen_disc_data_fun(output_generator)
+                            inputs, outputs = gen_disc_ext_data_fun(output_generator)
 
-                            self.gen.trainable = True
-                            for layer in self.gen.layers: layer.trainable = True
+                            self.gen.trainable = False
+                            for layer in self.gen.layers: layer.trainable = False
 
-                            self.disc.trainable = False
-                            for layer in self.disc.layers: layer.trainable = False
+                            self.disc.trainable = True
+                            for layer in self.disc.layers: layer.trainable = True
 
-                            gen_disc_step_logs = self.gen_disc.train_on_batch(inputs
+                            disc_ext_step_logs = self.disc_ext.train_on_batch(inputs
                                                                               , outputs
                                                                               , class_weight=class_weight
                                                                               , reset_metrics=False
-                                                                              , return_dict=True)
+                                                                              , return_dict=True)  # ?
                             del inputs, outputs
 
                             end_step = step + 1
-                            callbacks_gen_disc.on_train_batch_end(end_step, gen_disc_step_logs)
+                            callbacks_disc_ext.on_train_batch_end(end_step, disc_ext_step_logs)
 
-                    disc_ext_epoch_logs = copy.copy(disc_ext_step_logs)  # ?
-                    gen_disc_epoch_logs = copy.copy(gen_disc_step_logs)  # ?
+                    step = s_i - 1  # ?
+                    with trace.Trace('TraceContext'
+                            , graph_type='train'
+                            , epoch_num=e_i
+                            , step_num=step
+                            , batch_size=self.hps['batch_size']):
 
-                    # Do validation.
-                    if do_validation:  # ?
-                        if e_i % validation_freq == 0:  # ?
-                            # disc_ext.
-                            val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
-                                                                        , val_generator  # ?
-                                                                        , gen_disc_ext_data_fun
-                                                                        , callbacks_raw=None  # callbacks_disc_ext
-                                                                        , workers=1
-                                                                        , verbose=1)
+                        inputs, outputs = gen_gen_disc_data_fun(output_generator)
 
-                            # gen_disc.
-                            val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
-                                                                        , val_generator
-                                                                        , gen_gen_disc_data_fun
-                                                                        , callbacks_raw=None  # callbacks_gen_disc
-                                                                        , workers=1
-                                                                        , verbose=1)
-                            # Make epochs logs.
-                            epochs_log_disc_ext.update(val_outs_disc_ext)
-                            epochs_log_gen_disc.update(val_outs_gen_disc)
+                        self.gen.trainable = True
+                        for layer in self.gen.layers: layer.trainable = True
 
-                    callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
-                    callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
-                    disc_ext_training_logs = epochs_log_disc_ext
-                    gen_disc_training_logs = epochs_log_gen_disc
+                        self.disc.trainable = False
+                        for layer in self.disc.layers: layer.trainable = False
 
-                    if save_f:
-                        self.save_gan_model()
+                        gen_disc_step_logs = self.gen_disc.train_on_batch(inputs
+                                                                          , outputs
+                                                                          , class_weight=class_weight
+                                                                          , reset_metrics=False
+                                                                          , return_dict=True)
+                        del inputs, outputs
 
-                    pre_e_i = e_i
+                        end_step = step + 1
+                        callbacks_gen_disc.on_train_batch_end(end_step, gen_disc_step_logs)
 
-                callbacks_disc_ext.on_train_end(logs=disc_ext_training_logs)
-                callbacks_gen_disc.on_train_end(logs=gen_disc_training_logs)
-            finally:
-                try:
-                    if enq:
-                        enq.stop()
-                finally:
-                    if val_enq:
-                        val_enq.stop()
+                disc_ext_epoch_logs = copy.copy(disc_ext_step_logs)  # ?
+                gen_disc_epoch_logs = copy.copy(gen_disc_step_logs)  # ?
 
-            return self.disc_ext.history, self.gen_disc.history
+                # Do validation.
+                if do_validation:  # ?
+                    if e_i % validation_freq == 0:  # ?
+                        # disc_ext.
+                        val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
+                                                                    , val_generator  # ?
+                                                                    , gen_disc_ext_data_fun
+                                                                    , callbacks_raw=None  # callbacks_disc_ext
+                                                                    , workers=1
+                                                                    , verbose=1)
 
-        def fit_generator_progressively(self
-                                        , generator
-                                        , gen_disc_ext_data_fun
-                                        , gen_gen_disc_data_fun
-                                        , verbose=1
-                                        , callbacks_disc_ext=None
-                                        , callbacks_gen_disc=None
-                                        , validation_data_gen=None  # ?
-                                        , validation_steps=None
-                                        , validation_freq=1  # ?
-                                        , class_weight=None  # ?
-                                        , max_queue_size=10
-                                        , workers=1
-                                        , use_multiprocessing=False  # ?
-                                        , shuffle=True
-                                        , initial_epoch=0
-                                        , save_f=True):  # ?
-            """Train the GAN model with the generator progressively.
+                        # gen_disc.
+                        val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
+                                                                    , val_generator
+                                                                    , gen_gen_disc_data_fun
+                                                                    , callbacks_raw=None  # callbacks_gen_disc
+                                                                    , workers=1
+                                                                    , verbose=1)
+                        # Make epochs logs.
+                        epochs_log_disc_ext.update(val_outs_disc_ext)
+                        epochs_log_gen_disc.update(val_outs_gen_disc)
 
-            Parameters
-            ----------
-            generator: Generator.
-                Training data generator.
-            gen_disc_ext_data_fun: Function.
-                Data generating function for disc_ext.
-            gen_gen_disc_data_fun: Function.
-                Data generating function for gen_disc.
-            verbose: Integer.
-                Verbose mode (default=1).
-            callback_disc_ext: list.
-                disc_ext callbacks (default=None).
-            callback_gen_disc: list.
-                gen_disc callbacks (default=None).
-            validation_data_gen: Generator or Sequence.
-                Validation generator or sequence (default=None).
-            validation_steps: Integer.
-                Validation steps (default=None).
-            validation_freq: Integer.
-                Validation frequency (default=1).
-            class_weight: Numpy array. ?
-                Class weight (default=None).
-            max_queue_size: Integer.
-                Maximum size for the generator queue (default: 10).
-            workers: Integer.
-                Maximum number of processes to get samples (default: 1, 0: main thread).
-            use_multiprocessing: Boolean.
-                Multi-processing flag (default: False).
-            shuffle: Boolean.
-                Batch shuffling flag (default: True).
-            initial_epoch: Integer.
-                Initial epoch (default: 0).
-            save_f: Boolean.
-                Model saving flag (default: True).
+                callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
+                disc_ext_training_logs = epochs_log_disc_ext
+                gen_disc_training_logs = epochs_log_gen_disc
 
-            Returns
-            -------
-            Training history.
-                Tuple.
-            """
+                if save_f:
+                    self.save_gan_model()
 
-            '''
-            _keras_api_gauge.get_cell('fit').set(True)
-            # Legacy graph support is contained in `training_v1.Model`.
-            version_utils.disallow_legacy_graph('Model', 'fit')
-            self._assert_compile_was_called()
-            self._check_call_args('fit')
-            _disallow_inside_tf_function('fit')
-            '''
+                pre_e_i = e_i
 
-            # Check exception.
-            do_validation = bool(validation_data_gen)
-            if do_validation:
-                assert hasattr(validation_data_gen, 'next') or \
-                       hasattr(validation_data_gen, '__next') or \
-                       isinstance(validation_data_gen, Sequence)
-
-                if not isinstance(validation_data_gen, Sequence):
-                    assert validation_steps  # ?
-
-                assert isinstance(validation_freq, int)
-
-            if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
-                warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
-
-            # Initialize the results directory
-            if not os.path.isdir(os.path.join('results')):
-                os.mkdir(os.path.join('results'))
-            else:
-                shutil.rmtree(os.path.join('results'))
-                os.mkdir(os.path.join('results'))
-
-            enq = None
-            val_enq = None
+            callbacks_disc_ext.on_train_end(logs=disc_ext_training_logs)
+            callbacks_gen_disc.on_train_end(logs=gen_disc_training_logs)
+        finally:
             try:
-                # Get the validation generator and output generator.
-                if do_validation:
-                    if workers > 0:
-                        if isinstance(validation_data_gen, Sequence):
-                            val_enq = OrderedEnqueuer(validation_data_gen
-                                                      , use_multiprocessing=use_multiprocessing)  # shuffle?
-                            validation_steps = validation_steps or len(validation_data_gen)
-                        else:
-                            val_enq = GeneratorEnqueuer(validation_data_gen
-                                                        , use_multiprocessing=use_multiprocessing)
+                if enq:
+                    enq.stop()
+            finally:
+                if val_enq:
+                    val_enq.stop()
 
-                        val_enq.start(workers=workers, max_queue_size=max_queue_size)
-                        val_generator = val_enq.get()
-                    else:
-                        if isinstance(validation_data_gen, Sequence):
-                            val_generator = iter_sequence_infinite(validation_data_gen)
-                            validation_steps = validation_steps or len(validation_data_gen)
-                        else:
-                            val_generator = validation_data_gen
+        return self.disc_ext.history, self.gen_disc.history
 
+    def fit_generator_progressively(self
+                                    , generator
+                                    , gen_disc_ext_data_fun
+                                    , gen_gen_disc_data_fun
+                                    , verbose=1
+                                    , callbacks_disc_ext=None
+                                    , callbacks_gen_disc=None
+                                    , validation_data_gen=None  # ?
+                                    , validation_steps=None
+                                    , validation_freq=1  # ?
+                                    , class_weight=None  # ?
+                                    , max_queue_size=10
+                                    , workers=1
+                                    , use_multiprocessing=False  # ?
+                                    , shuffle=True
+                                    , initial_epoch=0
+                                    , save_f=True):  # ?
+        """Train the GAN model with the generator progressively.
+
+        Parameters
+        ----------
+        generator: Generator.
+            Training data generator.
+        gen_disc_ext_data_fun: Function.
+            Data generating function for disc_ext.
+        gen_gen_disc_data_fun: Function.
+            Data generating function for gen_disc.
+        verbose: Integer.
+            Verbose mode (default=1).
+        callback_disc_ext: list.
+            disc_ext callbacks (default=None).
+        callback_gen_disc: list.
+            gen_disc callbacks (default=None).
+        validation_data_gen: Generator or Sequence.
+            Validation generator or sequence (default=None).
+        validation_steps: Integer.
+            Validation steps (default=None).
+        validation_freq: Integer.
+            Validation frequency (default=1).
+        class_weight: Numpy array. ?
+            Class weight (default=None).
+        max_queue_size: Integer.
+            Maximum size for the generator queue (default: 10).
+        workers: Integer.
+            Maximum number of processes to get samples (default: 1, 0: main thread).
+        use_multiprocessing: Boolean.
+            Multi-processing flag (default: False).
+        shuffle: Boolean.
+            Batch shuffling flag (default: True).
+        initial_epoch: Integer.
+            Initial epoch (default: 0).
+        save_f: Boolean.
+            Model saving flag (default: True).
+
+        Returns
+        -------
+        Training history.
+            Tuple.
+        """
+
+        '''
+        _keras_api_gauge.get_cell('fit').set(True)
+        # Legacy graph support is contained in `training_v1.Model`.
+        version_utils.disallow_legacy_graph('Model', 'fit')
+        self._assert_compile_was_called()
+        self._check_call_args('fit')
+        _disallow_inside_tf_function('fit')
+        '''
+
+        # Check exception.
+        do_validation = bool(validation_data_gen)
+        if do_validation:
+            assert hasattr(validation_data_gen, 'next') or \
+                   hasattr(validation_data_gen, '__next') or \
+                   isinstance(validation_data_gen, Sequence)
+
+            if not isinstance(validation_data_gen, Sequence):
+                assert validation_steps  # ?
+
+            assert isinstance(validation_freq, int)
+
+        if not isinstance(generator, Sequence) and use_multiprocessing and workers > 1:
+            warnings.warn(UserWarning('For multiprocessing, use the instance of Sequence.'))
+
+        # Initialize the results directory
+        if not os.path.isdir(os.path.join('results')):
+            os.mkdir(os.path.join('results'))
+        else:
+            shutil.rmtree(os.path.join('results'))
+            os.mkdir(os.path.join('results'))
+
+        enq = None
+        val_enq = None
+        try:
+            # Get the validation generator and output generator.
+            if do_validation:
                 if workers > 0:
-                    if isinstance(generator, Sequence):
-                        enq = OrderedEnqueuer(generator
-                                              , use_multiprocessing=use_multiprocessing
-                                              , shuffle=shuffle)
+                    if isinstance(validation_data_gen, Sequence):
+                        val_enq = OrderedEnqueuer(validation_data_gen
+                                                  , use_multiprocessing=use_multiprocessing)  # shuffle?
+                        validation_steps = validation_steps or len(validation_data_gen)
                     else:
-                        enq = GeneratorEnqueuer(generator
-                                                , use_multiprocessing=use_multiprocessing)
+                        val_enq = GeneratorEnqueuer(validation_data_gen
+                                                    , use_multiprocessing=use_multiprocessing)
 
-                    enq.start(workers=workers, max_queue_size=max_queue_size)
-                    output_generator = enq.get()
+                    val_enq.start(workers=workers, max_queue_size=max_queue_size)
+                    val_generator = val_enq.get()
                 else:
-                    if isinstance(generator, Sequence):
-                        output_generator = iter_sequence_infinite(generator)
+                    if isinstance(validation_data_gen, Sequence):
+                        val_generator = iter_sequence_infinite(validation_data_gen)
+                        validation_steps = validation_steps or len(validation_data_gen)
                     else:
-                        output_generator = generator
+                        val_generator = validation_data_gen
 
-                # Callbacks.
-                # disc_ext.
-                if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
-                    callbacks_disc_ext = cbks.CallbackList(callbacks_disc_ext_raw
-                                                           , add_history=True
-                                                           , add_progbar=verbose != 0
-                                                           , model=self.disc_ext
-                                                           , verbose=verbose
-                                                           , epochs=self.hps['epochs']
-                                                           , steps=self.hps['batch_step'] * self.hps['disc_k_step'])
+            if workers > 0:
+                if isinstance(generator, Sequence):
+                    enq = OrderedEnqueuer(generator
+                                          , use_multiprocessing=use_multiprocessing
+                                          , shuffle=shuffle)
                 else:
-                    callbacks_disc_ext = callbacks_disc_ext_raw
+                    enq = GeneratorEnqueuer(generator
+                                            , use_multiprocessing=use_multiprocessing)
 
-                # gen_disc.
-                if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
-                    callbacks_gen_disc = cbks.CallbackList(callbacks_gen_disc_raw
-                                                           , add_history=True
-                                                           , add_progbar=verbose != 0
-                                                           , model=self.gen_disc
-                                                           , verbose=verbose
-                                                           , epochs=self.hps['epochs']
-                                                           , steps=self.hps['batch_step'])
+                enq.start(workers=workers, max_queue_size=max_queue_size)
+                output_generator = enq.get()
+            else:
+                if isinstance(generator, Sequence):
+                    output_generator = iter_sequence_infinite(generator)
                 else:
-                    callbacks_gen_disc = callbacks_gen_disc_raw
+                    output_generator = generator
 
-                # Train.
-                self.disc_ext.model.stop_training = False
-                self.disc_ext._train_counter.assign(0)
-                self.gen_disc.model.stop_training = False
-                self.gen_disc._train_counter.assign(0)
-                disc_ext_training_logs = None
-                gen_disc_training_logs = None
+            # Callbacks.
+            # disc_ext.
+            if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
+                callbacks_disc_ext = cbks.CallbackList(callbacks_disc_ext_raw
+                                                       , add_history=True
+                                                       , add_progbar=verbose != 0
+                                                       , model=self.disc_ext
+                                                       , verbose=verbose
+                                                       , epochs=self.hps['epochs']
+                                                       , steps=self.hps['batch_step'] * self.hps['disc_k_step'])
+            else:
+                callbacks_disc_ext = callbacks_disc_ext_raw
 
-                callbacks_disc_ext.on_train_begin()
-                callbacks_gen_disc.on_train_begin()
+            # gen_disc.
+            if not isinstance(callbacks_disc_ext_raw, cbks.CallbackList):
+                callbacks_gen_disc = cbks.CallbackList(callbacks_gen_disc_raw
+                                                       , add_history=True
+                                                       , add_progbar=verbose != 0
+                                                       , model=self.gen_disc
+                                                       , verbose=verbose
+                                                       , epochs=self.hps['epochs']
+                                                       , steps=self.hps['batch_step'])
+            else:
+                callbacks_gen_disc = callbacks_gen_disc_raw
 
-                initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(
-                    initial_epoch)  # ?
+            # Train.
+            self.disc_ext.model.stop_training = False
+            self.disc_ext._train_counter.assign(0)
+            self.gen_disc.model.stop_training = False
+            self.gen_disc._train_counter.assign(0)
+            disc_ext_training_logs = None
+            gen_disc_training_logs = None
 
-                pre_e_i = -1
-                for e_i in range(initial_epoch, self.hps['epochs']):
-                    if callbacks_disc_ext.model.stop_training or callbacks_gen_disc.model.stop_training:
-                        break
+            callbacks_disc_ext.on_train_begin()
+            callbacks_gen_disc.on_train_begin()
 
-                    self.disc_ext.reset_metrics()  # ?
-                    self.gen_disc.reset_metrics()
+            initial_epoch = self.disc_ext._maybe_load_initial_epoch_from_ckpt(
+                initial_epoch)  # ?
 
-                    epochs_log_disc_ext = {}
-                    epochs_log_gen_disc = {}
+            pre_e_i = -1
+            for e_i in range(initial_epoch, self.hps['epochs']):
+                if callbacks_disc_ext.model.stop_training or callbacks_gen_disc.model.stop_training:
+                    break
 
-                    callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
-                    callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
+                self.disc_ext.reset_metrics()  # ?
+                self.gen_disc.reset_metrics()
 
-                    # Train disc_ext, gen_disc models progressively according to the schedule for epochs.
-                    # Make partial disc_ext, gen_disc.
-                    partial_gen = self.gen.create_prog_model(ModelExt.PROGRESSIVE_MODE_FORWARD
-                                                             , self.nn_arch['gen_prog_depths'][e_i]
-                                                             , self.nn_arch['gen_prog_fixed_layer_names'])
-                    partial_disc = self.disc.create_prog_model(ModelExt.PROGRESSIVE_MODE_BACKWARD
-                                                               , self.nn_arch['disc_prog_depths'][e_i]
-                                                               , self.nn_arch['disc_prog_fixed_layer_names'])
-                    partial_disc_ext, partial_gen_disc = compose_gan_with_mode(partial_gen
-                                                                               , partial_disc
-                                                                               , self.nn_arch['composing_mode']
-                                                                               , multi_gpu=self.conf['multi_gpu']
-                                                                               , num_gpus=self.conf['num_gpus'])
+                epochs_log_disc_ext = {}
+                epochs_log_gen_disc = {}
 
-                    for s_i in range(self.hps['batch_step']):
-                        for k_i in range(self.hps['disc_k_step']):
-                            step = self.hps['disc_k_step'] * s_i + k_i - 1  # ?
-                            with trace.Trace('TraceContext'
-                                    , graph_type='train'
-                                    , epoch_num=e_i
-                                    , step_num=step
-                                    , batch_size=self.hps['batch_size']):
-                                callbacks_disc_ext.on_train_batch_begin(step)
+                callbacks_disc_ext.on_epoch_begin(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_begin(e_i, epochs_log_gen_disc)
 
-                                inputs, outputs = gen_disc_ext_data_fun(output_generator)
+                # Train disc_ext, gen_disc models progressively according to the schedule for epochs.
+                # Make partial disc_ext, gen_disc.
+                partial_gen = self.gen.create_prog_model(ModelExt.PROGRESSIVE_MODE_FORWARD
+                                                         , self.nn_arch['gen_prog_depths'][e_i]
+                                                         , self.nn_arch['gen_prog_fixed_layer_names'])
+                partial_disc = self.disc.create_prog_model(ModelExt.PROGRESSIVE_MODE_BACKWARD
+                                                           , self.nn_arch['disc_prog_depths'][e_i]
+                                                           , self.nn_arch['disc_prog_fixed_layer_names'])
+                partial_disc_ext, partial_gen_disc = compose_gan_with_mode(partial_gen
+                                                                           , partial_disc
+                                                                           , self.nn_arch['composing_mode']
+                                                                           , multi_gpu=self.conf['multi_gpu']
+                                                                           , num_gpus=self.conf['num_gpus'])
 
-                                self.gen.trainable = False
-                                for layer in self.gen.layers: layer.trainable = False
-
-                                self.disc.trainable = True
-                                for layer in self.disc.layers: layer.trainable = True
-
-                                disc_ext_step_logs = partial_disc_ext.train_on_batch(inputs
-                                                                                     , outputs
-                                                                                     , class_weight=class_weight
-                                                                                     , reset_metrics=False
-                                                                                     , return_dict=True)  # ?
-                                del inputs, outputs
-
-                                end_step = step + 1
-                                callbacks_disc_ext.on_train_batch_end(end_step, disc_ext_step_logs)
-
-                        step = s_i - 1  # ?
+                for s_i in range(self.hps['batch_step']):
+                    for k_i in range(self.hps['disc_k_step']):
+                        step = self.hps['disc_k_step'] * s_i + k_i - 1  # ?
                         with trace.Trace('TraceContext'
                                 , graph_type='train'
                                 , epoch_num=e_i
                                 , step_num=step
                                 , batch_size=self.hps['batch_size']):
+                            callbacks_disc_ext.on_train_batch_begin(step)
 
-                            inputs, outputs = gen_gen_disc_data_fun(output_generator)
+                            inputs, outputs = gen_disc_ext_data_fun(output_generator)
 
-                            self.gen.trainable = True
-                            for layer in self.gen.layers: layer.trainable = True
+                            self.gen.trainable = False
+                            for layer in self.gen.layers: layer.trainable = False
 
-                            self.disc.trainable = False
-                            for layer in self.disc.layers: layer.trainable = False
+                            self.disc.trainable = True
+                            for layer in self.disc.layers: layer.trainable = True
 
-                            gen_disc_step_logs = partial_gen_disc.train_on_batch(inputs
+                            disc_ext_step_logs = partial_disc_ext.train_on_batch(inputs
                                                                                  , outputs
                                                                                  , class_weight=class_weight
                                                                                  , reset_metrics=False
-                                                                                 , return_dict=True)
+                                                                                 , return_dict=True)  # ?
                             del inputs, outputs
 
                             end_step = step + 1
-                            callbacks_gen_disc.on_train_batch_end(end_step, gen_disc_step_logs)
+                            callbacks_disc_ext.on_train_batch_end(end_step, disc_ext_step_logs)
 
-                    disc_ext_epoch_logs = copy.copy(disc_ext_step_logs)  # ?
-                    gen_disc_epoch_logs = copy.copy(gen_disc_step_logs)  # ?
+                    step = s_i - 1  # ?
+                    with trace.Trace('TraceContext'
+                            , graph_type='train'
+                            , epoch_num=e_i
+                            , step_num=step
+                            , batch_size=self.hps['batch_size']):
 
-                    # Do validation.
-                    if do_validation:  # ?
-                        if e_i % validation_freq == 0:  # ?
-                            # disc_ext.
-                            val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
-                                                                        , val_generator  # ?
-                                                                        , gen_disc_ext_data_fun
-                                                                        , callbacks_raw=None  # callbacks_disc_ext
-                                                                        , workers=1
-                                                                        , verbose=1)
+                        inputs, outputs = gen_gen_disc_data_fun(output_generator)
 
-                            # gen_disc.
-                            val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
-                                                                        , val_generator
-                                                                        , gen_gen_disc_data_fun
-                                                                        , callbacks_raw=None  # callbacks_gen_disc
-                                                                        , workers=1
-                                                                        , verbose=1)
-                            # Make epochs logs.
-                            epochs_log_disc_ext.update(val_outs_disc_ext)
-                            epochs_log_gen_disc.update(val_outs_gen_disc)
+                        self.gen.trainable = True
+                        for layer in self.gen.layers: layer.trainable = True
 
-                    callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
-                    callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
-                    disc_ext_training_logs = epochs_log_disc_ext
-                    gen_disc_training_logs = epochs_log_gen_disc
+                        self.disc.trainable = False
+                        for layer in self.disc.layers: layer.trainable = False
 
-                    if save_f:
-                        self.save_gan_model()
+                        gen_disc_step_logs = partial_gen_disc.train_on_batch(inputs
+                                                                             , outputs
+                                                                             , class_weight=class_weight
+                                                                             , reset_metrics=False
+                                                                             , return_dict=True)
+                        del inputs, outputs
 
-                    pre_e_i = e_i
+                        end_step = step + 1
+                        callbacks_gen_disc.on_train_batch_end(end_step, gen_disc_step_logs)
 
-                callbacks_disc_ext.on_train_end(logs=disc_ext_training_logs)  # progress bar?
-                callbacks_gen_disc.on_train_end(logs=gen_disc_training_logs)
+                disc_ext_epoch_logs = copy.copy(disc_ext_step_logs)  # ?
+                gen_disc_epoch_logs = copy.copy(gen_disc_step_logs)  # ?
+
+                # Do validation.
+                if do_validation:  # ?
+                    if e_i % validation_freq == 0:  # ?
+                        # disc_ext.
+                        val_outs_disc_ext = self._evaluate_disc_ext(self.disc_ext
+                                                                    , val_generator  # ?
+                                                                    , gen_disc_ext_data_fun
+                                                                    , callbacks_raw=None  # callbacks_disc_ext
+                                                                    , workers=1
+                                                                    , verbose=1)
+
+                        # gen_disc.
+                        val_outs_gen_disc = self._evaluate_gen_disc(self.gen_disc
+                                                                    , val_generator
+                                                                    , gen_gen_disc_data_fun
+                                                                    , callbacks_raw=None  # callbacks_gen_disc
+                                                                    , workers=1
+                                                                    , verbose=1)
+                        # Make epochs logs.
+                        epochs_log_disc_ext.update(val_outs_disc_ext)
+                        epochs_log_gen_disc.update(val_outs_gen_disc)
+
+                callbacks_disc_ext.on_epoch_end(e_i, epochs_log_disc_ext)
+                callbacks_gen_disc.on_epoch_end(e_i, epochs_log_gen_disc)
+                disc_ext_training_logs = epochs_log_disc_ext
+                gen_disc_training_logs = epochs_log_gen_disc
+
+                if save_f:
+                    self.save_gan_model()
+
+                pre_e_i = e_i
+
+            callbacks_disc_ext.on_train_end(logs=disc_ext_training_logs)  # progress bar?
+            callbacks_gen_disc.on_train_end(logs=gen_disc_training_logs)
+        finally:
+            try:
+                if enq:
+                    enq.stop()
             finally:
-                try:
-                    if enq:
-                        enq.stop()
-                finally:
-                    if val_enq:
-                        val_enq.stop()
+                if val_enq:
+                    val_enq.stop()
 
-            return self.disc_ext.history, self.gen_disc.history
+        return self.disc_ext.history, self.gen_disc.history
 
         def _evaluate_disc_ext(self
                                , disc_ext

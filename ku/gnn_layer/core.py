@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.layers.merge import _Merge
 from tensorflow.python.keras.layers import Layer, InputSpec, Dense
 from tensorflow.python.keras import activations
@@ -47,11 +46,13 @@ class GraphConvolutionNetwork(Layer):
         X = inputs[0]
         A = inputs[1]
 
-        A_t = A + self.I
-        D_t = tf.linalg.diag(tf.pow(K.sum(A_t, axis=2), -0.5))
-        A_t = K.batch_dot(K.batch_dot(D_t, A_t), D_t)
+        # Fast approximate convolution by Thomas Kipf and Max Welling (2017).
+        A_td = A + self.I
+        D_td = tf.linalg.diag(tf.reduce_sum(A_td, 1))
+        D_td_inv_sr = tf.linalg.sqrtm(tf.linalg.inv(D_td))
+        A_hat = tf.linalg.matmul(tf.linalg.matmul(D_td_inv_sr, A_td), D_td_inv_sr)
 
-        X_p = tf.tensordot(K.batch_dot(A_t, X), self.W, axes=[[-1], [0]])
+        X_p = tf.tensordot(tf.tensordot(X, A_hat, axes=[[1], [1]]), self.W, axes=[[1], [1]])  # ?
 
         if self.activation is not None:
             X_p = self.activation(X_p)
