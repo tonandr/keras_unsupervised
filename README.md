@@ -6,12 +6,7 @@ On Keras, to develop semi-supervised learning and unsupervised learning via back
 # Tasks
 - [X] Plain RBM, DBN.
 - [X] GAN, Style-based GAN.
-- [ ] AutoEncoder.
-- [ ] First release, documentation.
-- [ ] BM, DBM.
-- [ ] Convolutional RBM, DBN.
-- [ ] Second release, documentation.
 
 ## Tasks status
+This project is closed with the final 1.1.3.dev1 version.
 
-[GAN and Autoencoder are being tested.](https://github.com/tonandr/keras_unsupervised/tree/master/examples/style_based_gan)
